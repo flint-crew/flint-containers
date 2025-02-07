@@ -21,7 +21,7 @@ docker pull alecthomson/flint-containers:wsclean
 or
 
 ```bash
-# for singularitu
+# for singularity / apptainer
 singularity pull docker://alecthomson/flint-containers:calibrate
 singularity pull docker://alecthomson/flint-containers:askapsoft
 singularity pull docker://alecthomson/flint-containers:aoflagger
