@@ -1,0 +1,43 @@
+FROM ubuntu:latest
+
+# Copy files
+COPY ./calibrate /calibrate
+
+# Update and upgrade
+RUN apt-get update && \
+    apt-get upgrade -y
+
+# Install basic utilities
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    wget \
+    rsync \
+    zip \
+    git
+
+# Install build tools
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    build-essential \
+    cmake
+
+# Install libraries
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    libcfitsio-dev \
+    libgsl-dev \
+    casacore-dev \
+    libboost-dev \
+    libboost-filesystem-dev \
+    libboost-date-time-dev \
+    libboost-system-dev \
+    libboost-thread-dev
+
+# Create symbolic link
+RUN ln -s /usr/include /usr/include_link
+
+# Build the container
+RUN cd /calibrate && \
+    . ./build_container.sh
+
+# Clean up
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+# Remove source code
+RUN rm -rf /calibrate

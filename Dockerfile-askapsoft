@@ -1,0 +1,1 @@
+FROM csirocass/askapsoft:1.17.6-openmpi4
