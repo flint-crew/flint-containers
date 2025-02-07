@@ -3,9 +3,11 @@
 This be yer compass me-hearties. Find yer way about the seas when sailing with [flint](https://github.com/tjgalvin/flint)!
 
 ## What is this?
+
 Build scripts for containers to use with the [flint pipeline](https://github.com/tjgalvin/flint).
 
 ## Where are the cotainers?
+
 Each container is built and pushed to [DockerHub](https://hub.docker.com/r/alecthomson/flint-containers/tags). Each application is available under a different tag.
 
 To get them you can run
