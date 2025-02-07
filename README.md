@@ -8,7 +8,7 @@ Build scripts for containers to use with the [flint pipeline](https://github.com
 ## Where are the cotainers?
 Each container is built and pushed to [DockerHub](https://hub.docker.com/r/alecthomson/flint-containers/tags). Each application is available under a different tag.
 
-To get them you can run:
+To get them you can run
 
 ```bash
 # for docker
@@ -18,7 +18,7 @@ docker pull alecthomson/flint-containers:aoflagger
 docker pull alecthomson/flint-containers:wsclean
 ```
 
-or:
+or
 
 ```bash
 # for singularitu
