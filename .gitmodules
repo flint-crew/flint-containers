@@ -1,0 +1,3 @@
+[submodule "calibrate"]
+	path = calibrate
+	url = https://bitbucket.csiro.au/scm/~len067/calibrate.git
