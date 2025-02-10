@@ -18,6 +18,7 @@ docker pull alecthomson/flint-containers:calibrate
 docker pull alecthomson/flint-containers:askapsoft
 docker pull alecthomson/flint-containers:aoflagger
 docker pull alecthomson/flint-containers:wsclean
+docker pull alecthomson/flint-containers:aegean
 ```
 
 or
@@ -28,4 +29,5 @@ singularity pull docker://alecthomson/flint-containers:calibrate
 singularity pull docker://alecthomson/flint-containers:askapsoft
 singularity pull docker://alecthomson/flint-containers:aoflagger
 singularity pull docker://alecthomson/flint-containers:wsclean
+singularity pull docker://alecthomson/flint-containers:aegean
 ```
