@@ -1,8 +1,15 @@
 FROM kernsuite/base:9
-RUN docker-apt-install wsclean casacore-dev git
 
-# The installer requires curl (and certificates) to download the release archive
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+# Get kern packages
+RUN docker-apt-install \
+    wsclean \
+    casacore-dev
+
+# Get other packages
+RUN docker-apt-install \
+    git \
+    curl \
+    ca-certificates
 
 # Download the latest installer
 ADD https://astral.sh/uv/install.sh /uv-installer.sh
