@@ -9,7 +9,9 @@ RUN docker-apt-install \
 RUN docker-apt-install \
     git \
     curl \
-    ca-certificates
+    ca-certificates \
+    python3 \
+    python-is-python3
 
 # Download the latest installer
 ADD https://astral.sh/uv/install.sh /uv-installer.sh
@@ -19,5 +21,4 @@ RUN sh /uv-installer.sh && rm /uv-installer.sh
 
 # Ensure the installed binary is on the `PATH`
 ENV PATH="/root/.local/bin/:$PATH"
-
 RUN uv pip install --system git+https://gitlab.com/Sunmish/potato.git
