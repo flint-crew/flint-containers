@@ -1,0 +1,17 @@
+FROM redhat/ubi8:latest
+RUN yum install -y wget
+WORKDIR /casa
+ENV CASABASE=casa-6.6.5-31-py3.10.el8
+RUN wget --content-disposition https://casa.nrao.edu/download/distro/casa/release/rhel/${CASABASE}.tar.xz
+# Install these now for caching
+RUN yum install -y tar xz perl
+RUN tar -xvf ${CASABASE}.tar.xz
+RUN rm -f ${CASABASE}.tar.xz
+ENV PATH="/casa/${CASABASE}/bin:${PATH}"
+# Make CASA download its data
+ENV HOME=/casa
+RUN mkdir -p $HOME/.casa/data
+RUN casa --log2term -c "exit"
+# Now use config.py
+COPY config.py ./
+ENV CASASITECONFIG=/casa/config.py
