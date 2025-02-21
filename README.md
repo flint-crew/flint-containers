@@ -20,6 +20,7 @@ docker pull alecthomson/flint-containers:aoflagger
 docker pull alecthomson/flint-containers:wsclean
 docker pull alecthomson/flint-containers:aegean
 docker pull alecthomson/flint-containers:potato
+docker pull alecthomson/flint-containers:casa
 ```
 
 or
@@ -32,6 +33,7 @@ singularity pull docker://alecthomson/flint-containers:aoflagger
 singularity pull docker://alecthomson/flint-containers:wsclean
 singularity pull docker://alecthomson/flint-containers:aegean
 singularity pull docker://alecthomson/flint-containers:potato
+singularity pull docker://alecthomson/flint-containers:casa
 ```
 
 ## Supported containers
@@ -42,3 +44,4 @@ singularity pull docker://alecthomson/flint-containers:potato
 - [WSClean](https://wsclean.readthedocs.io/en/latest/): WSClean (w-stacking clean) is a fast generic widefield imager developed by André Offringa.
 - [Aegean](https://github.com/PaulHancock/Aegean): AegeanTools source finding package developed by Paul Hancock.
 - [PotatoPeel](https://gitlab.com/Sunmish/potato): Peel out that annoying, terrible object developed by Stefan Duchesne.
+- [CASA](https://casa.nrao.edu/): The Common Astronomy Software Applications package, developed by NRAO.
