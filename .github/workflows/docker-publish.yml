@@ -55,6 +55,9 @@ jobs:
           tags: |
             type=raw,value=${{ matrix.name }}-${{ env.TAG_SUFFIX }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@v6
