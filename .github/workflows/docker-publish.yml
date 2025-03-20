@@ -29,13 +29,15 @@ jobs:
         id: find_dockerfiles
         run: |
           files=$(find . -name 'Dockerfile-*' | sed 's|./Dockerfile-||')
-          echo "files=$files" >> $GITHUB_ENV
-
+          echo "FILES<<EOF" >> $GITHUB_ENV
+          echo "$files" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          
       - name: Build and push Docker images
         env:
           IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/flint-containers
         run: |
-          for name in $files; do
+          for name in $FILES; do
             docker build -f Dockerfile-$name -t $IMAGE_NAME:$name .
             docker push $IMAGE_NAME:$name
           done
