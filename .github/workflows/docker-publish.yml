@@ -1,0 +1,47 @@
+name: Publish Docker images
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  push_to_registries:
+    name: Push Docker images to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Find Dockerfiles
+        id: find_dockerfiles
+        run: |
+          files=$(find . -name 'Dockerfile-*' | sed 's|./Dockerfile-||')
+          echo "files=$files" >> $GITHUB_ENV
+
+      - name: Build and push Docker images
+        env:
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/flint-containers
+        run: |
+          for name in $files; do
+            docker build -f Dockerfile-$name -t $IMAGE_NAME:$name .
+            docker push $IMAGE_NAME:$name
+          done
+
+      - name: Generate artifact attestations
+        run: |
+          for name in $files; do
+            digest=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/${{ github.repository_owner }}/flint-containers:$name | cut -d "@" -f 2)
+            gh workflow run actions/attest-build-provenance@v2 --with "subject-name=ghcr.io/${{ github.repository_owner }}/flint-containers,subject-digest=$digest,push-to-registry=true"
+          done
