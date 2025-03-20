@@ -5,6 +5,10 @@ on:
     types: [published]
   workflow_dispatch:
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
   push_to_registry:
     name: Push Docker images to GHCR
@@ -62,7 +66,7 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ghcr.io/${{ github.repository_owner }}/flint-containers:${{ matrix.name }}
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
