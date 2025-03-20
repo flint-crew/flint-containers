@@ -3,10 +3,9 @@ name: Publish Docker images
 on:
   release:
     types: [published]
-  workflow_dispatch:
 
 jobs:
-  push_to_registries:
+  push_to_registry:
     name: Push Docker images to GHCR
     runs-on: ubuntu-latest
     permissions:
@@ -14,6 +13,9 @@ jobs:
       contents: read
       attestations: write
       id-token: write
+    strategy:
+      matrix:
+        name: [calibrate, askapsoft, aoflagger, wsclean, aegean, potato, casa]
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -25,26 +27,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Find Dockerfiles
-        id: find_dockerfiles
-        run: |
-          files=$(find . -name 'Dockerfile-*' | sed 's|./Dockerfile-||')
-          echo "FILES<<EOF" >> $GITHUB_ENV
-          echo "$files" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          
-      - name: Build and push Docker images
+      - name: Build and push Docker image
         env:
-          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/flint-containers
+          IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/flint-containers:${{ matrix.name }}
         run: |
-          for name in $FILES; do
-            docker build -f Dockerfile-$name -t $IMAGE_NAME:$name .
-            docker push $IMAGE_NAME:$name
-          done
+          docker build -f Dockerfile-${{ matrix.name }} -t $IMAGE_NAME .
+          docker push $IMAGE_NAME
 
-      - name: Generate artifact attestations
+      - name: Generate artifact attestation
         run: |
-          for name in $files; do
-            digest=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/${{ github.repository_owner }}/flint-containers:$name | cut -d "@" -f 2)
-            gh workflow run actions/attest-build-provenance@v2 --with "subject-name=ghcr.io/${{ github.repository_owner }}/flint-containers,subject-digest=$digest,push-to-registry=true"
-          done
+          digest=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE_NAME | cut -d "@" -f 2)
+          gh workflow run actions/attest-build-provenance@v2 --with "subject-name=$IMAGE_NAME,subject-digest=$digest,push-to-registry=true"
