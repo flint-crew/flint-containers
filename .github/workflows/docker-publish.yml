@@ -41,7 +41,7 @@ jobs:
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,7 +50,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.name }
           tags: |
             type=raw,value=${{ env.TAG_SUFFIX }}
 
@@ -64,23 +64,23 @@ jobs:
           context: .
           file: Dockerfile-${{ matrix.name }}  # Builds the correct Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}  # Explicitly set tag
+          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}  # Explicitly set tag
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           
       - name: Debug build output
         run: |
-          docker images ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }
+          docker images ghcr.io/${{ github.repository_owner }}/${{ matrix.name }
 
       - name: Debug attestation input
         run: |
-          echo "Subject name: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}"
+          echo "Subject name: ghcr.io/${{ github.repository_owner }}/${{ matrix.name }}:${{ env.TAG_SUFFIX }}"
           echo "Subject digest: ${{ steps.push.outputs.digest }}"
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ matrix.name }}
+          subject-name: ghcr.io/${{ matrix.name }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
