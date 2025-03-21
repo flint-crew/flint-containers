@@ -8,32 +8,24 @@ Build scripts for containers to use with the [flint pipeline](https://github.com
 
 ## Where are the cotainers?
 
-Each container is built and pushed to [DockerHub](https://hub.docker.com/r/alecthomson/flint-containers/tags). Each application is available under a different tag.
+Each container is built and pushed to the Github Container Registry. The containers for each application are published as separated packages under the [flint-crew GitHub page](https://github.com/orgs/flint-crew/packages?repo_name=flint-containers).
 
-To get them you can run
+We previously published to [DockerHub](https://hub.docker.com/r/alecthomson/flint-containers/tags), these are no longer updated.
+
+Each application is available under its name with a tag attached from the latest release or git hash from this repository. See the [packages](https://github.com/orgs/flint-crew/packages?repo_name=flint-containers) to get the correct name and tag for your usage.
+
+To get a container you can run
 
 ```bash
 # for docker
-docker pull alecthomson/flint-containers:calibrate
-docker pull alecthomson/flint-containers:askapsoft
-docker pull alecthomson/flint-containers:aoflagger
-docker pull alecthomson/flint-containers:wsclean
-docker pull alecthomson/flint-containers:aegean
-docker pull alecthomson/flint-containers:potato
-docker pull alecthomson/flint-containers:casa
+docker pull ghcr.io/flint-crew/{application}:{tag}
 ```
 
 or
 
 ```bash
 # for singularity / apptainer
-singularity pull docker://alecthomson/flint-containers:calibrate
-singularity pull docker://alecthomson/flint-containers:askapsoft
-singularity pull docker://alecthomson/flint-containers:aoflagger
-singularity pull docker://alecthomson/flint-containers:wsclean
-singularity pull docker://alecthomson/flint-containers:aegean
-singularity pull docker://alecthomson/flint-containers:potato
-singularity pull docker://alecthomson/flint-containers:casa
+singularity pull docker://ghcr.io/flint-crew/{application}:{tag}
 ```
 
 ## Supported containers
