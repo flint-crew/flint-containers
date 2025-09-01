@@ -34,8 +34,12 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
 RUN ln -s /usr/include /usr/include_link
 
 # Build the container
-RUN cd /calibrate && \
-    . ./build_container.sh
+WORKDIR /calibrate
+RUN mkdir build
+RUN cd build && \
+    cmake ../ && \
+    make && \
+    make install
 
 # Clean up
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
