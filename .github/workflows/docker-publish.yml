@@ -18,6 +18,7 @@ jobs:
       attestations: write
       id-token: write
     strategy:
+      fail-fast: false   # optional, but stops one bad image cancelling the rest
       matrix:
         name: [calibrate, askapsoft, aoflagger, wsclean, aegean, potato, casa]
     steps:
@@ -25,7 +26,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          token: ${{ secrets.CALIBRATE_TOKEN }}
 
       - name: Determine tag suffix
         id: tag_suffix
