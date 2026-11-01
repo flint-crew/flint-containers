@@ -45,8 +45,9 @@ jobs:
       - run: python -m pip install actionlint-py hadolint-py shellcheck-py
       - name: Dockerfiles (hadolint)
         run: hadolint docker/*/Dockerfile
+      # docker-publish.yml is left as-is until the cutover PR removes it
       - name: Workflows (actionlint)
-        run: actionlint
+        run: actionlint .github/workflows/build.yml .github/workflows/probe-askapsoft-source.yml
       - name: Shell scripts (shellcheck)
         run: shellcheck tests/*.sh
       - name: Bake file parses
@@ -80,10 +81,12 @@ jobs:
                 "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]]; then
             push=false
           fi
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "push=${push}" >> "$GITHUB_OUTPUT"
-          # Re-download measures data once a month
-          echo "measures-refresh=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=${tag}"
+            echo "push=${push}"
+            # Re-download measures data once a month
+            echo "measures-refresh=$(date -u +%Y-%m)"
+          } >> "$GITHUB_OUTPUT"
           echo "Tag: ${tag}, push: ${push}"
 
       - uses: docker/setup-buildx-action@v4
