@@ -237,6 +237,18 @@ until then.
 
 PRs 2, 3 and 4 are independent once PR 1 is merged.
 
+**Other repositories:** `flint-crew/calibrate`'s CI clones this repository and
+builds `Dockerfile-calibrate` against its own checkout. The calibrate target
+takes its source as a named build context, so after the cutover that CI step
+becomes:
+
+```bash
+cd flint-containers
+docker buildx bake calibrate --set calibrate.contexts.calibrate-src=../calibrate
+```
+
+A matching PR in `flint-crew/calibrate` lands together with the cutover (PR 6).
+
 ## Open questions for review
 
 - Is casacore 3.7.1 the right starting point, or go straight to 3.8.x?
