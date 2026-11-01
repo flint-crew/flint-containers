@@ -37,3 +37,34 @@ singularity pull docker://ghcr.io/flint-crew/{application}:{tag}
 - [Aegean](https://github.com/PaulHancock/Aegean): AegeanTools source finding package developed by Paul Hancock.
 - [PotatoPeel](https://gitlab.com/Sunmish/potato): Peel out that annoying, terrible object developed by Stefan Duchesne.
 - [CASA](https://casa.nrao.edu/): The Common Astronomy Software Applications package, developed by NRAO.
+
+## New build system (in progress)
+
+Images are being moved to pinned, from-source builds driven by
+[`docker buildx bake`](https://docs.docker.com/build/bake/). See
+`docs/design.md` for the plan. Until that work is finished, the
+`Dockerfile-*` files above are still what gets released.
+
+All versions live at the top of [`docker-bake.hcl`](docker-bake.hcl).
+
+```bash
+# See what would be built: versions, tags and build arguments
+docker buildx bake --print
+
+# Build one image (and the shared base images it needs)
+docker buildx bake calibrate
+
+# Run the build-time test suites
+docker buildx bake test
+
+# Smoke test a built image the way flint runs it
+tests/smoke.sh calibrate ghcr.io/flint-crew/calibrate:dev
+```
+
+To build calibrate from a local checkout instead of the pinned commit:
+
+```bash
+docker buildx bake calibrate --set calibrate.contexts.calibrate-src=../calibrate
+```
+
+Images currently built this way: `runtime-base`, `casacore`, `calibrate`.

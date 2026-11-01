@@ -1,0 +1,46 @@
+# Checks whether the ASKAPsoft / yandasoft source repositories on CSIRO's
+# Bitbucket can be cloned anonymously. This decides whether the askapsoft
+# image can be built from source (see docs/design.md). Temporary: remove once
+# the askapsoft image has landed.
+name: Probe ASKAPsoft source access
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/probe-askapsoft-source.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Try anonymous git access to each repository
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          base=https://bitbucket.csiro.au/scm/askapsdp
+          repos="lofar-common lofar-blob base-askap base-logfilters base-imagemath
+                 base-scimath base-askapparallel base-accessors yandasoft"
+          ok=0; failed=0
+          {
+            echo "### Anonymous access to ${base}"
+            echo
+            echo "| Repository | Access | Latest tags |"
+            echo "|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for repo in ${repos}; do
+            if tags=$(timeout 60 git ls-remote --tags --refs "${base}/${repo}.git" 2>/tmp/err); then
+              latest=$(awk '{print $2}' <<<"${tags}" | sed 's#refs/tags/##' | sort -V | tail -3 | paste -sd ' ')
+              echo "| ${repo} | ✅ public | ${latest:-none} |" >> "$GITHUB_STEP_SUMMARY"
+              ok=$((ok + 1))
+            else
+              reason=$(head -c 200 /tmp/err | tr '\n|' '  ')
+              echo "| ${repo} | ❌ ${reason} | |" >> "$GITHUB_STEP_SUMMARY"
+              failed=$((failed + 1))
+            fi
+          done
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "${ok} reachable, ${failed} not reachable" | tee -a "$GITHUB_STEP_SUMMARY"

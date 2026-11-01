@@ -1,0 +1,13 @@
+# hadolint configuration (https://github.com/hadolint/hadolint)
+ignored:
+  # Ubuntu packages come from the pinned base image's release; pinning each
+  # apt package version would break on every Ubuntu security update.
+  - DL3008
+  # COPY --from=<name> refers to named build contexts supplied by
+  # docker-bake.hcl (e.g. casacore-src), which hadolint can't see.
+  - DL3022
+  # FROM <name> also refers to bake named contexts (casacore, casacore-build).
+  - DL3006
+  # SHELL is set to bash -o pipefail once, in the "os" stage of
+  # docker/base/Dockerfile; hadolint doesn't follow it into later stages.
+  - DL4006

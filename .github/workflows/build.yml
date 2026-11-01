@@ -1,0 +1,198 @@
+# Builds the images defined in docker-bake.hcl, tests them, and checks that
+# flint's own container call sites still work against them.
+#
+# While the new build is being introduced (see docs/design.md), this workflow
+# only publishes throwaway tags:
+#   pull request  -> ghcr.io/flint-crew/<image>:pr-<number>
+#   push to main  -> ghcr.io/flint-crew/<image>:edge
+# Release tags are still published by docker-publish.yml until the cutover PR.
+name: Build images
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      flint-ref:
+        description: flint git ref to run the compatibility tests against
+        default: main
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io/flint-crew
+  CACHE_REF: ghcr.io/flint-crew/flint-containers-cache
+  # Images published by this workflow; each one gets smoke tested
+  IMAGES: runtime-base casacore calibrate
+  # Containers the flint compatibility tests must find
+  FLINT_COMPAT_EXPECT: calibrate
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install actionlint-py hadolint-py shellcheck-py
+      - name: Dockerfiles (hadolint)
+        run: hadolint docker/*/Dockerfile
+      - name: Workflows (actionlint)
+        run: actionlint
+      - name: Shell scripts (shellcheck)
+        run: shellcheck tests/*.sh
+      - name: Bake file parses
+        run: docker buildx bake --print > /dev/null
+
+  build:
+    name: Build and smoke test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.settings.outputs.tag }}
+      push: ${{ steps.settings.outputs.push }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Work out tag and whether to push
+        id: settings
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            tag="pr-${{ github.event.pull_request.number }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            tag="edge"
+          else
+            tag="dev-${GITHUB_SHA::7}"
+          fi
+          # Pull requests from forks can't write to the registry
+          push=true
+          if [[ "${{ github.event_name }}" == "pull_request" && \
+                "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]]; then
+            push=false
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "push=${push}" >> "$GITHUB_OUTPUT"
+          # Re-download measures data once a month
+          echo "measures-refresh=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+          echo "Tag: ${tag}, push: ${push}"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: steps.settings.outputs.push == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show build plan
+        run: docker buildx bake --print
+        env:
+          TAGS: ${{ steps.settings.outputs.tag }}
+
+      - name: Build-time test suites
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          targets: test
+        env:
+          CACHE_REF: ${{ env.CACHE_REF }}
+          MEASURES_REFRESH: ${{ steps.settings.outputs.measures-refresh }}
+
+      - name: Build images
+        uses: docker/bake-action@v7
+        with:
+          source: .
+          targets: default
+          load: true
+          push: ${{ steps.settings.outputs.push == 'true' }}
+        env:
+          TAGS: ${{ steps.settings.outputs.tag }}
+          CACHE_REF: ${{ env.CACHE_REF }}
+          CACHE_PUSH: ${{ steps.settings.outputs.push }}
+          MEASURES_REFRESH: ${{ steps.settings.outputs.measures-refresh }}
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: Smoke tests
+        run: |
+          for image in ${IMAGES}; do
+            echo "::group::${image}"
+            tests/smoke.sh "${image}" "${REGISTRY}/${image}:${{ steps.settings.outputs.tag }}"
+            echo "::endgroup::"
+          done
+
+      - name: Image sizes
+        run: |
+          {
+            echo "### Images (\`${{ steps.settings.outputs.tag }}\`)"
+            echo
+            echo "| Image | Size |"
+            echo "|---|---|"
+            for image in ${IMAGES}; do
+              ref="${REGISTRY}/${image}:${{ steps.settings.outputs.tag }}"
+              size=$(docker image inspect --format '{{.Size}}' "${ref}" | numfmt --to=iec)
+              echo "| \`${ref}\` | ${size} |"
+            done
+            echo
+            echo "Measures data:"
+            echo '```'
+            docker run --rm "${REGISTRY}/calibrate:${{ steps.settings.outputs.tag }}" cat /opt/measures/SOURCE
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  flint-compat:
+    name: flint compatibility
+    needs: build
+    # Needs the images in the registry, so not possible for fork PRs
+    if: needs.build.outputs.push == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: eWaterCycle/setup-apptainer@v3
+
+      - name: Allow unprivileged user namespaces for Apptainer
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Install flint
+        run: |
+          ref="${{ inputs.flint-ref || 'main' }}"
+          python -m pip install --upgrade pip
+          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@${ref}" pytest
+          python -c "import flint, importlib.metadata as m; print('flint', m.version('askap-flint'))"
+
+      - name: Convert images to Apptainer files with flint's names
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p containers
+          for name in ${FLINT_COMPAT_EXPECT//,/ }; do
+            apptainer build "containers/flint-containers_${name}.sif" \
+              "docker://${REGISTRY}/${name}:${{ needs.build.outputs.tag }}"
+          done
+          ls -lh containers
+
+      - name: Run flint's container call sites
+        run: |
+          python -m pytest tests/flint_compat -v -rs \
+            --container-dir containers \
+            --expect "${FLINT_COMPAT_EXPECT}"
