@@ -159,7 +159,7 @@ jobs:
           load: true
         env:
           CACHE_REF: ${{ env.CACHE_REF }}
-          CACHE_PUSH: ${{ github.event_name != 'pull_request' }}
+          CACHE_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
 
       - name: Smoke tests
         if: steps.cpu.outputs.run == 'true'
