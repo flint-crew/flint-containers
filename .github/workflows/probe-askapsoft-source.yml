@@ -37,6 +37,7 @@ jobs:
               echo "| ${repo} | ✅ public | ${latest:-none} |" >> "$GITHUB_STEP_SUMMARY"
               ok=$((ok + 1))
             else
+              echo "${repo}: $(cat /tmp/err)"
               reason=$(head -c 200 /tmp/err | tr '\n|' '  ')
               echo "| ${repo} | ❌ ${reason} | |" >> "$GITHUB_STEP_SUMMARY"
               failed=$((failed + 1))
