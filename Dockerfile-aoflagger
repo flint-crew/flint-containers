@@ -1,2 +1,0 @@
-FROM kernsuite/base:9
-RUN docker-apt-install aoflagger
