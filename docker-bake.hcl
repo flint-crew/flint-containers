@@ -212,6 +212,9 @@ target "calibrate" {
 target "calibrate-test" {
   inherits = ["calibrate"]
   target   = "test"
+  args = {
+    PYTHON_CASACORE = PYTHON_CASACORE
+  }
   tags     = []
   output   = ["type=cacheonly"]
 }
