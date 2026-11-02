@@ -28,6 +28,8 @@ permissions:
 env:
   REGISTRY: ghcr.io/flint-crew
   CACHE_REF: ghcr.io/flint-crew/flint-containers-cache
+  # Pull requests write their own cache (read before main's) instead of main's
+  CACHE_SCOPE: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || '' }}
   PUBLISH: ${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
 
 jobs:

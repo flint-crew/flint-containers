@@ -83,6 +83,9 @@ variable "PLATFORMS" { default = "linux/amd64" }
 # Registry build cache; leave empty for local builds
 variable "CACHE_REF" { default = "" }
 variable "CACHE_PUSH" { default = false }
+# Empty: main's cache. Set (e.g. "pr-12") to write a separate cache that is
+# read before main's, so a branch never overwrites main's cache.
+variable "CACHE_SCOPE" { default = "" }
 
 variable "GITHUB_SHA" { default = "" }
 
@@ -95,12 +98,15 @@ function "tags" {
 
 function "cache_from" {
   params = [name]
-  result = CACHE_REF == "" ? [] : ["type=registry,ref=${CACHE_REF}:${name}-${MARCH}"]
+  result = CACHE_REF == "" ? [] : concat(
+    CACHE_SCOPE == "" ? [] : ["type=registry,ref=${CACHE_REF}:${name}-${MARCH}-${CACHE_SCOPE}"],
+    ["type=registry,ref=${CACHE_REF}:${name}-${MARCH}"],
+  )
 }
 
 function "cache_to" {
   params = [name]
-  result = CACHE_REF != "" && CACHE_PUSH ? ["type=registry,ref=${CACHE_REF}:${name}-${MARCH},mode=max,ignore-error=true"] : []
+  result = CACHE_REF != "" && CACHE_PUSH ? ["type=registry,ref=${CACHE_REF}:${name}-${MARCH}${CACHE_SCOPE == "" ? "" : "-${CACHE_SCOPE}"},mode=max,ignore-error=true"] : []
 }
 
 function "git" {
