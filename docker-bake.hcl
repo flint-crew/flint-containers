@@ -22,7 +22,7 @@ variable "UBUNTU_IMAGE" {
 variable "CASACORE" { default = "v3.7.1" }
 
 # https://github.com/flint-crew/calibrate (no tags, so a commit)
-variable "CALIBRATE" { default = "c1fb4c6d430d6cda1e1c76f363e5f4f449878c24" }
+variable "CALIBRATE" { default = "3e5e84a8606b44165e9db382611c6c7fbf397c9b" }
 
 # https://gitlab.com/aroffringa/wsclean
 variable "WSCLEAN" { default = "v3.7" }
