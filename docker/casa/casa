@@ -1,0 +1,30 @@
+#!/opt/venv/bin/python
+"""Run `casa -c <code>` with casatasks, in place of the full CASA application.
+
+flint runs commands without a shell and splits them on whitespace, so the
+code after -c can arrive as several arguments and is joined back together.
+Other options (--nologger, --log2term, ...) are ignored.
+"""
+
+import sys
+
+
+def main(argv: list[str]) -> int:
+    if "-c" not in argv:
+        print("usage: casa [options] -c <python code>", file=sys.stderr)
+        return 2
+    code = " ".join(argv[argv.index("-c") + 1 :])
+
+    namespace: dict = {}
+    exec("from casatasks import *", namespace)
+    try:
+        expression = compile(code, "<casa -c>", "eval")
+    except SyntaxError:
+        exec(compile(code, "<casa -c>", "exec"), namespace)
+        return 0
+    # Some tasks report failure by returning False instead of raising.
+    return 1 if eval(expression, namespace) is False else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
