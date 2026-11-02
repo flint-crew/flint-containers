@@ -6,14 +6,17 @@ FROM casacore-build AS build
 ARG MARCH
 COPY --from=calibrate-src / /src/calibrate
 WORKDIR /src/calibrate
-# Upstream hard-codes -march=native; remove it so MARCH decides the CPU target.
-RUN test -n "${MARCH}" || { echo "MARCH must be set" >&2; exit 1; } \
- && sed -i 's/-march=native//g' CMakeLists.txt \
- && ! grep -q 'march=native' CMakeLists.txt
+# TARGET_CPU sets -march. Commits before flint-crew/calibrate#9 ignore it
+# and hard-code -march=native, so refuse to build them.
+RUN test -n "${MARCH}" || { echo "MARCH must be set" >&2; exit 1; }
+RUN if grep -q 'march=native' CMakeLists.txt; then \
+        echo "This calibrate commit hard-codes -march=native; use one with TARGET_CPU" >&2; exit 1; \
+    fi
 RUN cmake -S . -B /tmp/build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/opt/calibrate \
-        -DCMAKE_CXX_FLAGS="-march=${MARCH} -mtune=generic" \
+        -DTARGET_CPU="${MARCH}" \
+        -DCMAKE_CXX_FLAGS="-mtune=generic" \
         -DCASACORE_ROOT_DIR=/opt/casacore \
         -DCMAKE_INSTALL_RPATH=/opt/casacore/lib \
  && cmake --build /tmp/build \
