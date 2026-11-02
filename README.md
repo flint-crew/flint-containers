@@ -91,18 +91,18 @@ Notes:
 
 All images except askapsoft use the same casacore build, version 3.7.1, so every tool reads and writes measurement sets with the same casacore version.
 
-We plan to move to casacore 3.8. The current releases of three of the tools do not build against it: casacore 3.8 no longer makes `string` available without `std::` and needs C++20. The fixes are in their main branches but not yet released.
+We plan to move to casacore 3.8. The current releases of two of the tools do not build against it, because casacore 3.8 no longer makes `string` available without `std::`. The fixes are in their main branches but not yet released. casacore after 3.8.1 also needs C++20; calibrate picks C++20 by itself for casacore 3.6 and newer.
 
 | Tool | Version used | Builds with casacore 3.7 | Builds with casacore 3.8 | Fix needed for 3.8 |
 |---|---|---|---|---|
 | wsclean | v3.7 | yes | no | wsclean commit [`5a4dcde`](https://gitlab.com/aroffringa/wsclean/-/commit/5a4dcde) (after v3.7) |
 | aoflagger | v3.5.0 | yes | no | aoflagger commit [`2c22cfe`](https://gitlab.com/aroffringa/aoflagger/-/commit/2c22cfe) (after v3.5.0) |
-| calibrate | `c1fb4c6` | yes | no | build with C++20 instead of C++17 (not done yet) |
+| calibrate | `3e5e84a` | yes | yes | none |
 | IDG | 1.2.0 | yes | yes | none |
 | EveryBeam | v0.8.5 | yes | yes | none |
 | python-casacore | v3.7.1 | yes | use v3.8.1 | none |
 
-TODO: when wsclean and aoflagger have releases that include those commits and calibrate builds with C++20, update `CASACORE` and `PYTHON_CASACORE` in `docker-bake.hcl` together with the tool versions.
+TODO: when wsclean and aoflagger have releases that include those commits, update `CASACORE` and `PYTHON_CASACORE` in `docker-bake.hcl` together with the tool versions.
 
 To see the versions inside an image:
 
