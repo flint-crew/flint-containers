@@ -8,7 +8,6 @@ ARG MARCH
 ARG BUILD_NUMPY
 ARG PYTHON_CASACORE
 COPY --from=python-casacore-src / /src/python-casacore
-COPY --from=potato-src / /src/potato
 # The git context has no .git directory, so setuptools-scm needs the version;
 # a commit is given as 0+g<commit>.
 RUN version="${PYTHON_CASACORE#v}" \
@@ -20,8 +19,10 @@ RUN version="${PYTHON_CASACORE#v}" \
         --config-settings=cmake.define.CASACORE_ROOT_DIR=/opt/casacore \
         --config-settings=cmake.define.BUILD_TESTING=OFF \
         --config-settings=cmake.define.CMAKE_CXX_FLAGS="-march=${MARCH} -mtune=generic" \
-        /src/python-casacore \
- && /opt/venv/bin/pip install --no-cache-dir /src/potato
+        /src/python-casacore
+# A separate step, so that changing POTATO doesn't rebuild python-casacore.
+COPY --from=potato-src / /src/potato
+RUN /opt/venv/bin/pip install --no-cache-dir /src/potato
 
 FROM wsclean AS potato
 COPY --from=build /opt/venv /opt/venv

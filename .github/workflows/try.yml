@@ -193,12 +193,16 @@ jobs:
         if: inputs.flint_tests
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest
+          # Install flint while the images are converted
+          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest \
+            > pip-install.log 2>&1 &
+          pip_pid=$!
           mkdir -p containers
           for image in ${IMAGES}; do
             apptainer build "containers/flint-containers_${image}.sif" "docker-daemon://${REGISTRY}/${image}:${TAG}"
             docker image rm "${REGISTRY}/${image}:${TAG}"
           done
+          if ! wait "${pip_pid}"; then cat pip-install.log; exit 1; fi
           python -m pytest tests/flint_compat -v -rs \
             --container-dir containers \
             --expect "$(tr ' ' ',' <<<"${IMAGES}")"

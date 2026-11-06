@@ -198,16 +198,41 @@ jobs:
         if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         uses: eWaterCycle/setup-apptainer@v3
 
+      # askapsoft is CSIRO's image, which only changes with ASKAPSOFT_IMAGE, and
+      # converting it to an Apptainer file takes about 7 minutes. Keep the file,
+      # keyed on the image's layers.
+      - name: Cache key for the askapsoft Apptainer file
+        id: askapsoft-sif
+        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64' && contains(matrix.images, 'askapsoft')
+        run: |
+          layers=$(docker image inspect --format '{{json .RootFS.Layers}}' "${REGISTRY}/askapsoft:ci" | sha256sum | cut -c1-16)
+          echo "key=askapsoft-sif-${layers}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        if: steps.askapsoft-sif.outputs.key
+        with:
+          path: containers/flint-containers_askapsoft.sif
+          key: ${{ steps.askapsoft-sif.outputs.key }}
+
       - name: Run flint's container call sites
         if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest
+          # Install flint while the images are converted
+          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest \
+            > pip-install.log 2>&1 &
+          pip_pid=$!
           mkdir -p containers
           for image in ${{ matrix.images }}; do
-            apptainer build "containers/flint-containers_${image}.sif" "docker-daemon://${REGISTRY}/${image}:ci"
+            sif="containers/flint-containers_${image}.sif"
+            if [[ -f "${sif}" ]]; then
+              echo "Using cached ${sif}"
+            else
+              apptainer build "${sif}" "docker-daemon://${REGISTRY}/${image}:ci"
+            fi
             docker image rm "${REGISTRY}/${image}:ci"
           done
+          if ! wait "${pip_pid}"; then cat pip-install.log; exit 1; fi
           python -m pytest tests/flint_compat -v -rs \
             --container-dir containers \
             --expect "$(tr ' ' ',' <<<"${{ matrix.images }}")"

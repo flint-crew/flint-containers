@@ -98,13 +98,14 @@ COPY --from=measures /opt/measures /opt/measures
 FROM build-base AS casacore-build
 ARG MARCH
 ARG BUILD_NUMPY
-COPY --from=casacore-src / /src/casacore
 # An empty MARCH would let projects fall back to -march=native.
 RUN test -n "${MARCH}" || { echo "MARCH must be set" >&2; exit 1; }
 # casacore's Python converters (needed by python-casacore) are compiled against
 # NumPy 2 headers so they work with the NumPy 2 installed in the Python images.
 RUN python3 -m venv /opt/build-venv \
  && /opt/build-venv/bin/pip install --no-cache-dir "numpy==${BUILD_NUMPY}"
+# Copied after the steps above so that changing CASACORE doesn't redo them.
+COPY --from=casacore-src / /src/casacore
 RUN cmake -S /src/casacore -B /tmp/build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/opt/casacore \
