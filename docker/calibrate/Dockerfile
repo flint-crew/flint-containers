@@ -23,17 +23,24 @@ RUN cmake -S . -B /tmp/build -G Ninja \
  && cmake --install /tmp/build --strip
 
 # Runs calibrate's own test suite against the installed programs.
-# python-casacore is built against the image's casacore, as in the potato image.
+# python-casacore is built from source against the image's casacore, as in the
+# potato image, so PYTHON_CASACORE can be a commit as well as a release.
 FROM build AS test
 ARG BUILD_NUMPY
 ARG PYTHON_CASACORE
 COPY --from=casacore /opt/measures /opt/measures
-RUN python3 -m venv /tmp/venv \
+COPY --from=python-casacore-src / /src/python-casacore
+# The git context has no .git directory, so setuptools-scm needs the version;
+# a commit is given as 0+g<commit>.
+RUN version="${PYTHON_CASACORE#v}" \
+ && case "${version}" in ""|*[!0-9.]*) version="0+g${PYTHON_CASACORE}" ;; esac \
+ && python3 -m venv /tmp/venv \
  && /tmp/venv/bin/pip install --no-cache-dir "numpy==${BUILD_NUMPY}" pytest \
- && /tmp/venv/bin/pip install --no-cache-dir --no-binary python-casacore \
+ && SETUPTOOLS_SCM_PRETEND_VERSION="${version}" \
+    /tmp/venv/bin/pip install --no-cache-dir \
         --config-settings=cmake.define.CASACORE_ROOT_DIR=/opt/casacore \
         --config-settings=cmake.define.BUILD_TESTING=OFF \
-        "python-casacore==${PYTHON_CASACORE#v}" \
+        /src/python-casacore \
  && CALIBRATE_BIN_DIR=/opt/calibrate/bin /tmp/venv/bin/python -m pytest -q /src/calibrate/tests
 
 FROM casacore AS calibrate

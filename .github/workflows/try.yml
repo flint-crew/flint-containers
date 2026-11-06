@@ -1,0 +1,144 @@
+# Try versions that are not in docker-bake.hcl yet, such as a new release or an
+# upstream branch, without opening a pull request.
+#
+# Run it from the Actions tab (Try versions > Run workflow), or with
+#   gh workflow run try.yml -f versions="WSCLEAN=master EVERYBEAM=v0.9.1"
+#
+# The check job reads the upstream build files and stops within a minute or so
+# if the versions can't work together (tools/try_build.py check). The build job
+# then builds only the images the versions change, for amd64 only, and runs the
+# smoke tests and, optionally, flint's container call sites. With "push", the
+# images are pushed as ghcr.io/flint-crew/<image>:try-<label>.
+name: Try versions
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: 'Versions to try, as NAME=REF separated by spaces, with NAME a docker-bake.hcl variable. Example: WSCLEAN=master EVERYBEAM=v0.9.1'
+        required: true
+        type: string
+      images:
+        description: "Images to build, separated by spaces. Leave empty to build every image the versions change."
+        required: false
+        default: ""
+        type: string
+      flint_tests:
+        description: "Run flint's container call sites (adds about 5 to 15 minutes)"
+        type: boolean
+        default: true
+      push:
+        description: "Push the images to ghcr.io/flint-crew/<image>:try-<label>"
+        type: boolean
+        default: false
+      label:
+        description: "Label for the pushed tags (try-<label>). Leave empty to use the run number."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io/flint-crew
+  CACHE_REF: ghcr.io/flint-crew/flint-containers-cache
+  # Tries read main's build cache and write their own, never main's.
+  CACHE_SCOPE: try
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      versions: ${{ steps.check.outputs.versions }}
+      images: ${{ steps.check.outputs.images }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # Inputs go through the environment, not into the script text, and
+      # try_build.py only accepts known variable names and plain ref characters.
+      - name: Check that the versions fit together
+        id: check
+        env:
+          VERSIONS: ${{ inputs.versions }}
+          IMAGES: ${{ inputs.images }}
+        run: |
+          # shellcheck disable=SC2086 # VERSIONS is split into NAME=REF words on purpose
+          python tools/try_build.py check --verbose --images "${IMAGES}" \
+            --summary "${GITHUB_STEP_SUMMARY}" --github-output "${GITHUB_OUTPUT}" ${VERSIONS}
+
+  build:
+    needs: check
+    if: needs.check.outputs.images != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSIONS: ${{ needs.check.outputs.versions }}
+      IMAGES: ${{ needs.check.outputs.images }}
+      TAG: try-${{ inputs.label || github.run_number }}
+      CACHE_PUSH: "true"
+      GITHUB_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # The images plus build cache need more space than the runner has free.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # One bake for all the images (and calibrate's tests if calibrate is one),
+      # so the first failure anywhere stops the run.
+      - name: Build and smoke test
+        run: |
+          # shellcheck disable=SC2086 # VERSIONS is split into NAME=REF words on purpose
+          python tools/try_build.py build --no-check --smoke --images "${IMAGES}" --tag "${TAG}" ${VERSIONS}
+
+      - name: Set up Apptainer
+        if: inputs.flint_tests
+        uses: eWaterCycle/setup-apptainer@v3
+
+      - name: Run flint's container call sites
+        if: inputs.flint_tests
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest
+          mkdir -p containers
+          for image in ${IMAGES}; do
+            apptainer build "containers/flint-containers_${image}.sif" "docker-daemon://${REGISTRY}/${image}:${TAG}"
+            docker image rm "${REGISTRY}/${image}:${TAG}"
+          done
+          python -m pytest tests/flint_compat -v -rs \
+            --container-dir containers \
+            --expect "$(tr ' ' ',' <<<"${IMAGES}")"
+
+      # Everything is in the build cache by now, so this only uploads.
+      - name: Push
+        if: inputs.push
+        run: |
+          # shellcheck disable=SC2086 # VERSIONS is split into NAME=REF words on purpose
+          python tools/try_build.py build --no-check --push --images "${IMAGES}" --tag "${TAG}" ${VERSIONS}
+          {
+            echo "### Pushed"
+            echo '```bash'
+            for image in ${IMAGES}; do
+              echo "apptainer pull docker://${REGISTRY}/${image}:${TAG}"
+            done
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"

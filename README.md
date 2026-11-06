@@ -138,13 +138,44 @@ To build calibrate from a local checkout instead of the pinned commit:
 docker buildx bake calibrate --set calibrate.contexts.calibrate-src=../calibrate
 ```
 
+### Trying new versions
+
+`tools/try_build.py` checks whether a set of versions can work together before anything is compiled, then builds only the images they change. Give each version as `NAME=REF`, where `NAME` is a variable in `docker-bake.hcl` and `REF` is a tag, branch or commit:
+
+```bash
+# About a minute: is this combination compatible? Which images does it change?
+tools/try_build.py check WSCLEAN=master EVERYBEAM=v0.9.1
+
+# Check, then build those images locally and run the smoke tests on them
+tools/try_build.py build WSCLEAN=master EVERYBEAM=v0.9.1 --smoke
+```
+
+The check reads each project's `CMakeLists.txt` at the given version and reports:
+
+- dependency versions outside the range a project accepts (for example, wsclean's accepted EveryBeam range), with the newest tag that fits
+- casacore headers that need a newer C++ standard than a project compiles with (for example, casacore 3.8.2 needs C++20, which python-casacore 3.7.1 doesn't use)
+- fixes a project needs under a condition, such as the wsclean and aoflagger commits needed for casacore 3.8, listed in [`tools/compat.toml`](tools/compat.toml)
+- python-casacore and casacore versions with a different major.minor (a warning)
+
+Branches are pinned to their current commit, and the output ends with the exact `docker buildx bake` command to run. When a build fails for a reason the check could have caught, add a rule to `tools/compat.toml`. The check is a quick filter: a build can still fail on problems that only show up when compiling.
+
+To try versions in CI without opening a pull request, run the **Try versions** workflow from the Actions tab, or:
+
+```bash
+gh workflow run try.yml -f versions="WSCLEAN=master EVERYBEAM=v0.9.1"
+# Also push the images as ghcr.io/flint-crew/<image>:try-wsclean-master
+gh workflow run try.yml -f versions="WSCLEAN=master EVERYBEAM=v0.9.1" -f push=true -f label=wsclean-master
+```
+
+It runs the check first and stops there if the versions don't fit. Otherwise it builds the changed images for amd64 (`x86-64`) only, then runs the smoke tests and flint's container call sites. A try's tags are never `latest` and are not CPU-specific.
+
 ### Changing a version
 
-Edit the version in `docker-bake.hcl` and open a pull request. CI builds the images and runs the tests below.
+Once a combination works, put the versions printed by `tools/try_build.py check` into `docker-bake.hcl` and open a pull request. CI runs the same check in its lint job, so incompatible versions fail within about a minute, then builds every image for every CPU target and runs the tests below.
 
 ### Tests
 
-- `tests/smoke.sh <image> <ref>` runs an image the way Apptainer runs it for flint (read-only, non-root, no home directory). It checks that the expected commands run and that no shared libraries are missing.
+- `tests/smoke.sh <image> <ref>` runs an image the way Apptainer runs it for flint (read-only, non-root, no home directory). It checks that the expected commands run, that they report the version in the image's labels, and that no shared libraries are missing.
 - `tests/flint_compat/` runs flint's own functions for each container call site (flagging, calibration, imaging, source finding, linmos, the CASA tasks and peeling) against Apptainer images, using flint's example measurement set.
 
 ```bash

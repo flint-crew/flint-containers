@@ -1,0 +1,48 @@
+# Compatibility rules for tools/try_build.py.
+#
+# Most of what try_build.py checks is read from each project's CMakeLists.txt
+# at the version being tried: which packages it uses, the version ranges it
+# accepts, and the C++ standard it compiles with. This file holds what can't
+# be read that way. Add to it whenever a build fails for a reason that could
+# have been caught before compiling.
+
+# --- CMake packages built from a source in docker-bake.hcl -----------------------
+#
+# Maps a docker-bake.hcl variable to the CMake package it installs, so a
+# project's find_package(<package> ...) and ${<version_var>} VERSION_LESS ...
+# checks can be matched to that variable's version.
+
+[provides.CASACORE]
+package = "Casacore"
+version_var = "CASACORE_VERSION"
+
+[provides.EVERYBEAM]
+package = "EveryBeam"
+version_var = "EVERYBEAM_VERSION"
+
+[provides.IDG]
+package = "IDGAPI"
+version_var = "IDGAPI_VERSION"
+
+# --- Fixes a project needs under some condition ---------------------------------
+#
+# If `when` holds, the commit of `source` being built must include `commit`.
+# `when` is "<VARIABLE> <op> <version>" with op one of >=, >, <=, <, ==.
+
+[[needs_commit]]
+source = "WSCLEAN"
+commit = "5a4dcde"
+when = "CASACORE >= 3.8"
+why = "casacore 3.8 no longer makes `string` available without `std::`"
+
+[[needs_commit]]
+source = "AOFLAGGER"
+commit = "2c22cfe"
+when = "CASACORE >= 3.8"
+why = "casacore 3.8 no longer makes `string` available without `std::`"
+
+# --- Sources that should share a major.minor version ----------------------------
+
+[[same_minor]]
+sources = ["PYTHON_CASACORE", "CASACORE"]
+why = "each python-casacore release is built and tested against the casacore release with the same major.minor"

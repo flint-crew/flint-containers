@@ -45,6 +45,10 @@ jobs:
       - run: actionlint
       - run: shellcheck tests/*.sh
       - run: docker buildx bake --print > /dev/null
+      # Reads the upstream build files at the pinned versions and fails here,
+      # before the long builds start, if they can't work together.
+      - name: Check that the pinned versions fit together
+        run: python tools/try_build.py check --verbose --summary "${GITHUB_STEP_SUMMARY}"
 
   tag:
     runs-on: ubuntu-24.04
