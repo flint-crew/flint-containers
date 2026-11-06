@@ -1,11 +1,12 @@
 # Versions and build targets for every image.
 #
-#   docker buildx bake --print      show what would be built
-#   docker buildx bake wsclean      build one image and the stages it needs
-#   docker buildx bake              build all images
-#   docker buildx bake test         run calibrate's own test suite
+#   docker buildx bake --print    show what would be built
+#   docker buildx bake wsclean    build one image and the stages it needs
+#   docker buildx bake            build all images
+#   docker buildx bake test       run calibrate's own test suite
 #
 # Any variable can be overridden from the environment, for example
+#
 #   MARCH=x86-64-v3 TAG_SUFFIX=-x86-64-v3 docker buildx bake compiled
 #
 # https://docs.docker.com/build/bake/
@@ -18,29 +19,33 @@ variable "UBUNTU_IMAGE" {
 }
 
 # https://github.com/casacore/casacore
-# 3.8 is not used yet; see "casacore version" in README.md.
+# Pre-release wsclean build uses casacore 3.8.x. PYTHON_CASACORE below must be
+# a 3.8-series release to match.
 variable "CASACORE" { default = "v3.8.2" }
 
 # https://github.com/flint-crew/calibrate (no tags, so a commit)
 variable "CALIBRATE" { default = "3e5e84a8606b44165e9db382611c6c7fbf397c9b" }
 
-# https://gitlab.com/aroffringa/wsclean
+# https://gitlab.com/aroffringa/wsclean (pre-release commit, not a tag)
 variable "WSCLEAN" { default = "f985416b72b3543c409efcf6b7e8b0523e5971b0" }
 
-# https://git.astron.nl/RD/idg (wsclean 3.7 needs >= 0.8.1)
+# https://git.astron.nl/RD/idg (wsclean 3.7 needs >= 0.8.1; check this against
+# the pre-release wsclean commit if the wsclean build fails)
 variable "IDG" { default = "1.2.0" }
 
-# https://git.astron.nl/RD/EveryBeam (wsclean 3.7 needs 0.7.4 to 0.8.x)
+# https://git.astron.nl/RD/EveryBeam (wsclean 3.7 needs 0.7.4 to 0.8.x; check
+# this against the pre-release wsclean commit if the wsclean build fails)
 variable "EVERYBEAM" { default = "v0.8.5" }
 
-# https://gitlab.com/aroffringa/aoflagger
+# https://gitlab.com/aroffringa/aoflagger (pre-release commit, not a tag)
 variable "AOFLAGGER" { default = "811f8e09261f04e97a4802a23635eee125fbf4b7" }
 
 # https://gitlab.com/Sunmish/potato (no tags, so a commit)
 variable "POTATO" { default = "4bb494010ef690318246dc5673127f4f87a7fa82" }
 
-# https://github.com/casacore/python-casacore (used by potato)
-variable "PYTHON_CASACORE" { default = "v3.7.1" }
+# https://github.com/casacore/python-casacore (used by potato and calibrate-test)
+# Must match the casacore major.minor above (3.8.x).
+variable "PYTHON_CASACORE" { default = "v3.8.1" }
 
 # https://github.com/PaulHancock/Aegean
 variable "AEGEAN" { default = "v2.3.4" }
@@ -78,11 +83,13 @@ variable "TAG_SUFFIX" { default = "" }
 variable "TAGS" { default = "dev" }
 
 variable "REGISTRY" { default = "ghcr.io/flint-crew" }
+
 variable "PLATFORMS" { default = "linux/amd64" }
 
 # Registry build cache; leave empty for local builds
 variable "CACHE_REF" { default = "" }
 variable "CACHE_PUSH" { default = false }
+
 # Empty: main's cache. Set (e.g. "pr-12") to write a separate cache that is
 # read before main's, so a branch never overwrites main's cache.
 variable "CACHE_SCOPE" { default = "" }
@@ -154,8 +161,8 @@ target "_common" {
 }
 
 target "_base" {
-  inherits   = ["_common"]
-  context    = "docker/base"
+  inherits = ["_common"]
+  context  = "docker/base"
   contexts = {
     casacore-src = git("https://github.com/casacore/casacore.git", CASACORE)
   }
@@ -221,8 +228,8 @@ target "calibrate-test" {
   args = {
     PYTHON_CASACORE = PYTHON_CASACORE
   }
-  tags     = []
-  output   = ["type=cacheonly"]
+  tags   = []
+  output = ["type=cacheonly"]
 }
 
 target "wsclean" {
