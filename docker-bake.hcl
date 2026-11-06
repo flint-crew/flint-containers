@@ -31,8 +31,8 @@ variable "WSCLEAN" { default = "f985416b72b3543c409efcf6b7e8b0523e5971b0" }
 # https://git.astron.nl/RD/idg (wsclean 3.7 needs >= 0.8.1)
 variable "IDG" { default = "1.2.0" }
 
-# https://git.astron.nl/RD/EveryBeam (wsclean 3.7 needs 0.7.4 to 0.8.x)
-variable "EVERYBEAM" { default = "v0.8.5" }
+# https://git.astron.nl/RD/EveryBeam (the pinned wsclean commit needs 0.9)
+variable "EVERYBEAM" { default = "v0.9.1" }
 
 # https://gitlab.com/aroffringa/aoflagger
 variable "AOFLAGGER" { default = "v3.5.0" }
