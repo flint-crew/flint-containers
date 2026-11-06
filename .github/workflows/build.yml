@@ -44,8 +44,8 @@ jobs:
       - run: hadolint docker/*/Dockerfile
       - run: actionlint
       - run: shellcheck tests/*.sh
-      - run: ruff check tools
-      - run: ruff format --check tools
+      - run: ruff check .
+      - run: ruff format --check .
       - run: docker buildx bake --print > /dev/null
       # Reads the upstream build files at the pinned versions and fails here,
       # before the long builds start, if they can't work together.

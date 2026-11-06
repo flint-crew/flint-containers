@@ -53,10 +53,14 @@ def container(container_dir: Path, expected: set[str]):
 
     def _container(name: str) -> Path:
         try:
-            return get_known_container_path(container_directory=container_dir, name=name)
+            return get_known_container_path(
+                container_directory=container_dir, name=name
+            )
         except AssertionError:
             if name in expected:
-                pytest.fail(f"Expected container '{name}' is missing from {container_dir}")
+                pytest.fail(
+                    f"Expected container '{name}' is missing from {container_dir}"
+                )
             pytest.skip(f"Container '{name}' not built in this run")
 
     return _container
@@ -97,9 +101,19 @@ def ms_example(tmp_path: Path) -> Path:
         shape = tab.getcol("DATA").shape
 
         # Approximate UVWs (no precession or nutation), as in calibrate's tests/msgen.py
-        hour_angle = 2 * np.pi * (0.7790572732640 + 1.00273781191135448 * (time / 86400 - 51544.5)) - ra
+        hour_angle = (
+            2
+            * np.pi
+            * (0.7790572732640 + 1.00273781191135448 * (time / 86400 - 51544.5))
+            - ra
+        )
         lx, ly, lz = (positions[ant2] - positions[ant1]).T
-        sin_h, cos_h, sin_d, cos_d = np.sin(hour_angle), np.cos(hour_angle), np.sin(dec), np.cos(dec)
+        sin_h, cos_h, sin_d, cos_d = (
+            np.sin(hour_angle),
+            np.cos(hour_angle),
+            np.sin(dec),
+            np.cos(dec),
+        )
         uvw = np.stack(
             [
                 sin_h * lx + cos_h * ly,
