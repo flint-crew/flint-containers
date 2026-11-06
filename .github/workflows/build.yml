@@ -224,12 +224,18 @@ jobs:
           CACHE_REF: ${{ env.CACHE_REF }}
           PUSH_BY_DIGEST: "true"
 
+      # The metadata can hold entries that are not per-target objects (for
+      # example lists of build warnings), so only read the digest from objects.
+      # It is passed through the environment so that quotes in warning text
+      # cannot break the shell.
       - name: Save digests
         if: env.PUBLISH == 'true' && matrix.suffix == ''
+        env:
+          METADATA: ${{ steps.push-digest.outputs.metadata }}
         run: |
           mkdir -p digests
-          jq -r 'to_entries[] | select(.value["containerimage.digest"]) | "\(.key) \(.value["containerimage.digest"])"' \
-            <<<'${{ steps.push-digest.outputs.metadata }}' > "digests/${{ matrix.name }}.txt"
+          jq -r 'to_entries[] | select(.value | type == "object") | select(.value["containerimage.digest"]) | "\(.key) \(.value["containerimage.digest"])"' \
+            <<<"${METADATA}" > "digests/${{ matrix.name }}.txt"
           cat "digests/${{ matrix.name }}.txt"
 
       - uses: actions/upload-artifact@v7
