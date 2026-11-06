@@ -40,10 +40,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: python -m pip install actionlint-py hadolint-py shellcheck-py
+      - run: python -m pip install actionlint-py hadolint-py shellcheck-py ruff
       - run: hadolint docker/*/Dockerfile
       - run: actionlint
       - run: shellcheck tests/*.sh
+      - run: ruff check tools
+      - run: ruff format --check tools
       - run: docker buildx bake --print > /dev/null
       # Reads the upstream build files at the pinned versions and fails here,
       # before the long builds start, if they can't work together.
