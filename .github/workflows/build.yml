@@ -210,6 +210,8 @@ jobs:
 
       # Portable builds are pushed by digest and joined into one multi-arch
       # tag by the publish job; CPU-specific builds are amd64-only and tagged here.
+      # PUSH_BY_DIGEST makes docker-bake.hcl use untagged image names, because
+      # buildkit refuses to push a tagged name by digest.
       - name: Push portable images by digest
         if: env.PUBLISH == 'true' && matrix.suffix == ''
         id: push-digest
@@ -220,6 +222,7 @@ jobs:
           set: "*.output=type=image,push-by-digest=true,name-canonical=true,push=true"
         env:
           CACHE_REF: ${{ env.CACHE_REF }}
+          PUSH_BY_DIGEST: "true"
 
       - name: Save digests
         if: env.PUBLISH == 'true' && matrix.suffix == ''

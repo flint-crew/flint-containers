@@ -94,9 +94,13 @@ variable "GITHUB_SHA" { default = "" }
 
 # --- Helpers --------------------------------------------------------------------
 
+# Set by CI when pushing by digest: buildkit refuses to push a tagged name by
+# digest, so the image name must carry no tag (the publish job adds tags later).
+variable "PUSH_BY_DIGEST" { default = false }
+
 function "tags" {
   params = [name]
-  result = [for t in split(",", TAGS) : "${REGISTRY}/${name}:${trimspace(t)}${TAG_SUFFIX}"]
+  result = PUSH_BY_DIGEST ? ["${REGISTRY}/${name}"] : [for t in split(",", TAGS) : "${REGISTRY}/${name}:${trimspace(t)}${TAG_SUFFIX}"]
 }
 
 function "cache_from" {
