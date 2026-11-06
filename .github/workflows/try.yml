@@ -1,8 +1,10 @@
-# Try versions that are not in docker-bake.hcl yet, such as a new release or an
-# upstream branch, without opening a pull request.
+# Build images with versions that are not in docker-bake.hcl yet, such as a new
+# release or an upstream branch, without opening a pull request.
 #
-# Run it from the Actions tab (Try versions > Run workflow), or with
-#   gh workflow run try.yml -f versions="WSCLEAN=master EVERYBEAM=v0.9.1"
+# Run it from the Actions tab: Try versions > Run workflow opens a form with a
+# box per tool. Fill in the versions to try (a tag, branch or commit) and leave
+# the rest empty to keep the versions pinned in docker-bake.hcl. Or:
+#   gh workflow run try.yml -f wsclean=master -f everybeam=v0.9.1
 #
 # The check job reads the upstream build files and stops within a minute or so
 # if the versions can't work together (tools/try_build.py check). The build job
@@ -13,10 +15,62 @@ name: Try versions
 
 on:
   workflow_dispatch:
+    # Each box is one docker-bake.hcl variable. Empty keeps the pinned version.
     inputs:
-      versions:
-        description: 'Versions to try, as NAME=REF separated by spaces, with NAME a docker-bake.hcl variable. Example: WSCLEAN=master EVERYBEAM=v0.9.1'
-        required: true
+      casacore:
+        description: "casacore: tag, branch or commit of github.com/casacore/casacore (e.g. v3.8.2)"
+        required: false
+        default: ""
+        type: string
+      python_casacore:
+        description: "python-casacore: github.com/casacore/python-casacore (e.g. v3.8.1)"
+        required: false
+        default: ""
+        type: string
+      wsclean:
+        description: "wsclean: gitlab.com/aroffringa/wsclean (e.g. master)"
+        required: false
+        default: ""
+        type: string
+      everybeam:
+        description: "EveryBeam: git.astron.nl/RD/EveryBeam (e.g. v0.9.1)"
+        required: false
+        default: ""
+        type: string
+      idg:
+        description: "IDG: git.astron.nl/RD/idg (e.g. 1.2.0)"
+        required: false
+        default: ""
+        type: string
+      aoflagger:
+        description: "aoflagger: gitlab.com/aroffringa/aoflagger"
+        required: false
+        default: ""
+        type: string
+      calibrate:
+        description: "calibrate: github.com/flint-crew/calibrate (a commit or branch)"
+        required: false
+        default: ""
+        type: string
+      potato:
+        description: "potato: gitlab.com/Sunmish/potato (a commit or branch)"
+        required: false
+        default: ""
+        type: string
+      aegean:
+        description: "Aegean: github.com/PaulHancock/Aegean"
+        required: false
+        default: ""
+        type: string
+      casa:
+        description: "casatasks version on PyPI (e.g. 6.7.6.14)"
+        required: false
+        default: ""
+        type: string
+      other:
+        description: "Any other docker-bake.hcl variables, as NAME=VALUE separated by spaces (e.g. BUILD_NUMPY=2.3.0)"
+        required: false
+        default: ""
         type: string
       images:
         description: "Images to build, separated by spaces. Leave empty to build every image the versions change."
@@ -62,12 +116,33 @@ jobs:
       - name: Check that the versions fit together
         id: check
         env:
-          VERSIONS: ${{ inputs.versions }}
+          IN_CASACORE: ${{ inputs.casacore }}
+          IN_PYTHON_CASACORE: ${{ inputs.python_casacore }}
+          IN_WSCLEAN: ${{ inputs.wsclean }}
+          IN_EVERYBEAM: ${{ inputs.everybeam }}
+          IN_IDG: ${{ inputs.idg }}
+          IN_AOFLAGGER: ${{ inputs.aoflagger }}
+          IN_CALIBRATE: ${{ inputs.calibrate }}
+          IN_POTATO: ${{ inputs.potato }}
+          IN_AEGEAN: ${{ inputs.aegean }}
+          IN_CASA: ${{ inputs.casa }}
+          OTHER: ${{ inputs.other }}
           IMAGES: ${{ inputs.images }}
         run: |
-          # shellcheck disable=SC2086 # VERSIONS is split into NAME=REF words on purpose
+          versions=()
+          for name in CASACORE PYTHON_CASACORE WSCLEAN EVERYBEAM IDG AOFLAGGER CALIBRATE POTATO AEGEAN CASA; do
+            value="IN_${name}"
+            value="${!value//[[:space:]]/}"
+            if [[ -n "${value}" ]]; then versions+=("${name}=${value}"); fi
+          done
+          read -r -a other <<<"${OTHER}"
+          versions+=("${other[@]}")
+          if [[ ${#versions[@]} -eq 0 ]]; then
+            echo "::error::Fill in at least one version to try."
+            exit 1
+          fi
           python tools/try_build.py check --verbose --images "${IMAGES}" \
-            --summary "${GITHUB_STEP_SUMMARY}" --github-output "${GITHUB_OUTPUT}" ${VERSIONS}
+            --summary "${GITHUB_STEP_SUMMARY}" --github-output "${GITHUB_OUTPUT}" "${versions[@]}"
 
   build:
     needs: check

@@ -159,12 +159,11 @@ The check reads each project's `CMakeLists.txt` at the given version and reports
 
 Branches are pinned to their current commit, and the output ends with the exact `docker buildx bake` command to run. When a build fails for a reason the check could have caught, add a rule to `tools/compat.toml`. The check is a quick filter: a build can still fail on problems that only show up when compiling.
 
-To try versions in CI without opening a pull request, run the **Try versions** workflow from the Actions tab, or:
+To try versions in CI without opening a pull request, go to **Actions > Try versions > Run workflow**. It opens a form with a box for each tool (casacore, python-casacore, wsclean, EveryBeam, IDG, aoflagger, calibrate, potato, Aegean, CASA). Type a tag, branch or commit into the ones to change, leave the rest empty to keep the versions pinned in `docker-bake.hcl`, and press **Run workflow**. Tick **push** to publish the results as `ghcr.io/flint-crew/<image>:try-<label>`. The same from the command line:
 
 ```bash
-gh workflow run try.yml -f versions="WSCLEAN=master EVERYBEAM=v0.9.1"
-# Also push the images as ghcr.io/flint-crew/<image>:try-wsclean-master
-gh workflow run try.yml -f versions="WSCLEAN=master EVERYBEAM=v0.9.1" -f push=true -f label=wsclean-master
+gh workflow run try.yml -f wsclean=master -f everybeam=v0.9.1
+gh workflow run try.yml -f wsclean=master -f everybeam=v0.9.1 -f push=true -f label=wsclean-master
 ```
 
 It runs the check first and stops there if the versions don't fit. Otherwise it builds the changed images for amd64 (`x86-64`) only, then runs the smoke tests and flint's container call sites. A try's tags are never `latest` and are not CPU-specific.
