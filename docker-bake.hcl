@@ -19,13 +19,13 @@ variable "UBUNTU_IMAGE" {
 
 # https://github.com/casacore/casacore
 # 3.8 is not used yet; see "casacore version" in README.md.
-variable "CASACORE" { default = "v3.7.1" }
+variable "CASACORE" { default = "v3.8.2" }
 
 # https://github.com/flint-crew/calibrate (no tags, so a commit)
 variable "CALIBRATE" { default = "3e5e84a8606b44165e9db382611c6c7fbf397c9b" }
 
 # https://gitlab.com/aroffringa/wsclean
-variable "WSCLEAN" { default = "v3.7" }
+variable "WSCLEAN" { default = "f985416b72b3543c409efcf6b7e8b0523e5971b0" }
 
 # https://git.astron.nl/RD/idg (wsclean 3.7 needs >= 0.8.1)
 variable "IDG" { default = "1.2.0" }
@@ -34,7 +34,7 @@ variable "IDG" { default = "1.2.0" }
 variable "EVERYBEAM" { default = "v0.8.5" }
 
 # https://gitlab.com/aroffringa/aoflagger
-variable "AOFLAGGER" { default = "v3.5.0" }
+variable "AOFLAGGER" { default = "811f8e09261f04e97a4802a23635eee125fbf4b7" }
 
 # https://gitlab.com/Sunmish/potato (no tags, so a commit)
 variable "POTATO" { default = "4bb494010ef690318246dc5673127f4f87a7fa82" }
