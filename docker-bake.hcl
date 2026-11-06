@@ -19,33 +19,29 @@ variable "UBUNTU_IMAGE" {
 }
 
 # https://github.com/casacore/casacore
-# Pre-release wsclean build uses casacore 3.8.x. PYTHON_CASACORE below must be
-# a 3.8-series release to match.
-variable "CASACORE" { default = "v3.8.2" }
+# 3.8 is not used yet; see "casacore version" in README.md.
+variable "CASACORE" { default = "v3.7.1" }
 
 # https://github.com/flint-crew/calibrate (no tags, so a commit)
 variable "CALIBRATE" { default = "3e5e84a8606b44165e9db382611c6c7fbf397c9b" }
 
-# https://gitlab.com/aroffringa/wsclean (pre-release commit, not a tag)
+# https://gitlab.com/aroffringa/wsclean (latest commit on master, not a tag)
 variable "WSCLEAN" { default = "f985416b72b3543c409efcf6b7e8b0523e5971b0" }
 
-# https://git.astron.nl/RD/idg (wsclean 3.7 needs >= 0.8.1; check this against
-# the pre-release wsclean commit if the wsclean build fails)
+# https://git.astron.nl/RD/idg (wsclean 3.7 needs >= 0.8.1)
 variable "IDG" { default = "1.2.0" }
 
-# https://git.astron.nl/RD/EveryBeam (wsclean 3.7 needs 0.7.4 to 0.8.x; check
-# this against the pre-release wsclean commit if the wsclean build fails)
+# https://git.astron.nl/RD/EveryBeam (wsclean 3.7 needs 0.7.4 to 0.8.x)
 variable "EVERYBEAM" { default = "v0.8.5" }
 
-# https://gitlab.com/aroffringa/aoflagger (pre-release commit, not a tag)
-variable "AOFLAGGER" { default = "811f8e09261f04e97a4802a23635eee125fbf4b7" }
+# https://gitlab.com/aroffringa/aoflagger
+variable "AOFLAGGER" { default = "v3.5.0" }
 
 # https://gitlab.com/Sunmish/potato (no tags, so a commit)
 variable "POTATO" { default = "4bb494010ef690318246dc5673127f4f87a7fa82" }
 
 # https://github.com/casacore/python-casacore (used by potato and calibrate-test)
-# Must match the casacore major.minor above (3.8.x).
-variable "PYTHON_CASACORE" { default = "v3.8.1" }
+variable "PYTHON_CASACORE" { default = "v3.7.1" }
 
 # https://github.com/PaulHancock/Aegean
 variable "AEGEAN" { default = "v2.3.4" }
