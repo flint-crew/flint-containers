@@ -14,7 +14,9 @@ from pathlib import Path
 from casacore.tables import table
 
 
-def test_calibrate_then_applysolutions(container, ms_example: Path, calibrate_model: Path):
+def test_calibrate_then_applysolutions(
+    container, ms_example: Path, calibrate_model: Path
+):
     from flint.calibrate.aocalibrate import (
         create_apply_solutions_cmd,
         create_calibrate_cmd,

@@ -40,11 +40,17 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: python -m pip install actionlint-py hadolint-py shellcheck-py
+      - run: python -m pip install actionlint-py hadolint-py shellcheck-py ruff
       - run: hadolint docker/*/Dockerfile
       - run: actionlint
       - run: shellcheck tests/*.sh
+      - run: ruff check .
+      - run: ruff format --check .
       - run: docker buildx bake --print > /dev/null
+      # Reads the upstream build files at the pinned versions and fails here,
+      # before the long builds start, if they can't work together.
+      - name: Check that the pinned versions fit together
+        run: python tools/try_build.py check --verbose --summary "${GITHUB_STEP_SUMMARY}"
 
   tag:
     runs-on: ubuntu-24.04
@@ -194,16 +200,41 @@ jobs:
         if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         uses: eWaterCycle/setup-apptainer@v3
 
+      # askapsoft is CSIRO's image, which only changes with ASKAPSOFT_IMAGE, and
+      # converting it to an Apptainer file takes about 7 minutes. Keep the file,
+      # keyed on the image's layers.
+      - name: Cache key for the askapsoft Apptainer file
+        id: askapsoft-sif
+        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64' && contains(matrix.images, 'askapsoft')
+        run: |
+          layers=$(docker image inspect --format '{{json .RootFS.Layers}}' "${REGISTRY}/askapsoft:ci" | sha256sum | cut -c1-16)
+          echo "key=askapsoft-sif-${layers}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v6
+        if: steps.askapsoft-sif.outputs.key
+        with:
+          path: containers/flint-containers_askapsoft.sif
+          key: ${{ steps.askapsoft-sif.outputs.key }}
+
       - name: Run flint's container call sites
         if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest
+          # Install flint while the images are converted
+          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest \
+            > pip-install.log 2>&1 &
+          pip_pid=$!
           mkdir -p containers
           for image in ${{ matrix.images }}; do
-            apptainer build "containers/flint-containers_${image}.sif" "docker-daemon://${REGISTRY}/${image}:ci"
+            sif="containers/flint-containers_${image}.sif"
+            if [[ -f "${sif}" ]]; then
+              echo "Using cached ${sif}"
+            else
+              apptainer build "${sif}" "docker-daemon://${REGISTRY}/${image}:ci"
+            fi
             docker image rm "${REGISTRY}/${image}:ci"
           done
+          if ! wait "${pip_pid}"; then cat pip-install.log; exit 1; fi
           python -m pytest tests/flint_compat -v -rs \
             --container-dir containers \
             --expect "$(tr ' ' ',' <<<"${{ matrix.images }}")"

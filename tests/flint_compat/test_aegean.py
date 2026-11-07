@@ -24,7 +24,9 @@ def make_image(template: Path, output: Path) -> Path:
     sigma_pix = header["BMAJ"] / abs(header["CDELT2"]) / 2.355
     y, x = np.mgrid[:SIZE, :SIZE]
     for cx, cy in ((64, 64), (128, 160), (200, 90)):
-        data[0, 0] += 0.1 * np.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2 * sigma_pix**2))
+        data[0, 0] += 0.1 * np.exp(
+            -((x - cx) ** 2 + (y - cy) ** 2) / (2 * sigma_pix**2)
+        )
 
     fits.writeto(output, data, header)
     return output

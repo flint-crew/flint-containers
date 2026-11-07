@@ -32,6 +32,19 @@ expect_output() {
     echo "ok: '$*' prints '$pattern'"
 }
 
+# major.minor of the version an image was built from, read from its labels
+# (e.g. io.github.flint-crew.wsclean=v3.7 gives 3.7). Images built from a
+# commit rather than a release give "[0-9]", which matches any version number.
+label_version() {
+    local value
+    value=$(docker image inspect --format "{{ index .Config.Labels \"io.github.flint-crew.$1\" }}" "$image")
+    if [[ "$value" =~ ^v?([0-9]+\.[0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]//./\\.}"
+    else
+        echo "[0-9]"
+    fi
+}
+
 check() {
     local description=$1
     shift
@@ -69,12 +82,12 @@ case "$name" in
         expect_output "Usage: addmodel" addmodel
         ;;
     wsclean)
-        expect_output "WSClean version 3.7" wsclean --version
+        expect_output "WSClean version $(label_version wsclean)" wsclean --version
         expect_output "IDG is available" wsclean --version
         expect_output "EveryBeam is available" wsclean --version
         ;;
     aoflagger)
-        expect_output "AOFlagger 3.5" aoflagger --version
+        expect_output "AOFlagger $(label_version aoflagger)" aoflagger --version
         ;;
     potato)
         expect_output "usage: hot_potato" hot_potato -h
@@ -83,11 +96,11 @@ case "$name" in
         check "python-casacore imports" python -c "import casacore.tables"
         ;;
     aegean)
-        expect_output "2.3.4" aegean --version
+        expect_output "$(label_version aegean)" aegean --version
         expect_output "usage: BANE" BANE --help
         ;;
     casa)
-        expect_output "6.7.6" casa -c "import casatasks; print(casatasks.version_string())"
+        expect_output "$(label_version casatasks)" casa -c "import casatasks; print(casatasks.version_string())"
         expect_output "True True True True" casa --nologger -c \
             "print(callable(mstransform), callable(cvel), callable(gaincal), callable(applycal))"
         ;;

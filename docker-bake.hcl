@@ -154,8 +154,14 @@ target "_common" {
 }
 
 target "_base" {
-  inherits   = ["_common"]
-  context    = "docker/base"
+  inherits = ["_common"]
+  context  = "docker/base"
+}
+
+# Only the casacore stages get the casacore source, so that changing CASACORE
+# leaves build-base and runtime-base (and the images on them) unchanged.
+target "_casacore" {
+  inherits = ["_base"]
   contexts = {
     casacore-src = git("https://github.com/casacore/casacore.git", CASACORE)
   }
@@ -174,14 +180,14 @@ target "runtime-base" {
 }
 
 target "casacore-build" {
-  inherits   = ["_base"]
+  inherits   = ["_casacore"]
   target     = "casacore-build"
   cache-from = cache_from("casacore-build")
   cache-to   = cache_to("casacore-build")
 }
 
 target "casacore" {
-  inherits   = ["_base"]
+  inherits   = ["_casacore"]
   target     = "casacore"
   cache-from = cache_from("casacore")
   cache-to   = cache_to("casacore")
@@ -218,6 +224,9 @@ target "calibrate" {
 target "calibrate-test" {
   inherits = ["calibrate"]
   target   = "test"
+  contexts = {
+    python-casacore-src = git("https://github.com/casacore/python-casacore.git", PYTHON_CASACORE)
+  }
   args = {
     PYTHON_CASACORE = PYTHON_CASACORE
   }

@@ -25,7 +25,11 @@ def test_potato_config_and_peel(container, ms_example: Path, tmp_path: Path):
         potato_container=potato,
         ms_path=ms,
         potato_config_options=PotatoConfigOptions(
-            image_size=512, image_channels=1, peel_size=256, peel_channels=1, peel_nmiter=1
+            image_size=512,
+            image_channels=1,
+            peel_size=256,
+            peel_channels=1,
+            peel_nmiter=1,
         ),
     )
     assert config.config_path.exists()
@@ -37,7 +41,12 @@ def test_potato_config_and_peel(container, ms_example: Path, tmp_path: Path):
         potato_container=potato,
         ms=ms,
         potato_peel_arguments=PotatoPeelArguments(
-            ms=ms_example, ras=[ra], decs=[dec], peel_fovs=[0.1], image_fov=1.0, n=["test"]
+            ms=ms_example,
+            ras=[ra],
+            decs=[dec],
+            peel_fovs=[0.1],
+            image_fov=1.0,
+            n=["test"],
         ),
         potato_peel_options=PotatoPeelOptions(
             c=config.config_path, tmp=tmp_path, minpeelflux=0.0
