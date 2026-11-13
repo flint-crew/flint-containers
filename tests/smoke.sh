@@ -107,6 +107,16 @@ case "$name" in
     askapsoft)
         check "linmos on PATH" sh -c 'command -v linmos'
         ;;
+    rclone)
+        expect_output "$(label_version rclone)" rclone version
+        expect_output "go/linking: static" rclone version
+        check "CA certificates for HTTPS" test -s /etc/ssl/certs/ca-certificates.crt
+        # The copy flint runs, to a folder rather than an object store
+        check "rclone copy --checksum --immutable" sh -c '
+            mkdir src && echo flint > src/a && echo a > list \
+            && rclone copy --files-from-raw list --checksum --immutable src dst \
+            && cmp src/a dst/a'
+        ;;
     *)
         echo "No checks defined for '$name'" >&2
         exit 1

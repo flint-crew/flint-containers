@@ -5,7 +5,7 @@
 #   <tag>             portable build: amd64 (x86-64) and arm64 (armv8-a)
 #   <tag>-x86-64-v3   amd64 with AVX2
 #   <tag>-x86-64-v4   amd64 with AVX-512
-# Images without CPU-specific builds (aegean, casa, askapsoft) get the
+# Images without CPU-specific builds (aegean, casa, askapsoft, rclone) get the
 # -x86-64-v3/-v4 tags as copies of the portable image, so any tag can be
 # pulled for every image.
 name: Build images
@@ -82,7 +82,7 @@ jobs:
             march: x86-64
             suffix: ""
             group: default
-            images: calibrate wsclean aoflagger potato aegean casa askapsoft
+            images: calibrate wsclean aoflagger potato aegean casa askapsoft rclone
             cpu_flag: ""
           - name: amd64-v3
             runner: ubuntu-24.04
@@ -106,7 +106,7 @@ jobs:
             march: armv8-a
             suffix: ""
             group: arm64
-            images: calibrate wsclean aoflagger potato aegean
+            images: calibrate wsclean aoflagger potato aegean rclone
             cpu_flag: ""
     name: build (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
@@ -305,7 +305,7 @@ jobs:
           TAG: ${{ needs.tag.outputs.tag }}
           LATEST: ${{ github.event_name == 'release' }}
         run: |
-          for image in calibrate wsclean aoflagger potato aegean casa askapsoft; do
+          for image in calibrate wsclean aoflagger potato aegean casa askapsoft rclone; do
             sources=$(awk -v img="${image}" '$1 == img {print ENVIRON["REGISTRY"] "/" img "@" $2}' digests/*.txt)
             tags=(-t "${REGISTRY}/${image}:${TAG}")
             if [[ "${LATEST}" == "true" ]]; then tags+=(-t "${REGISTRY}/${image}:latest"); fi
@@ -318,7 +318,7 @@ jobs:
           TAG: ${{ needs.tag.outputs.tag }}
           LATEST: ${{ github.event_name == 'release' }}
         run: |
-          for image in aegean casa askapsoft; do
+          for image in aegean casa askapsoft rclone; do
             for suffix in -x86-64-v3 -x86-64-v4; do
               tags=(-t "${REGISTRY}/${image}:${TAG}${suffix}")
               if [[ "${LATEST}" == "true" ]]; then tags+=(-t "${REGISTRY}/${image}:latest${suffix}"); fi

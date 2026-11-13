@@ -67,6 +67,11 @@ on:
         required: false
         default: ""
         type: string
+      rclone:
+        description: "rclone: github.com/rclone/rclone (e.g. v1.76.0)"
+        required: false
+        default: ""
+        type: string
       other:
         description: "Any other docker-bake.hcl variables, as NAME=VALUE separated by spaces (e.g. BUILD_NUMPY=2.3.0)"
         required: false
@@ -126,11 +131,12 @@ jobs:
           IN_POTATO: ${{ inputs.potato }}
           IN_AEGEAN: ${{ inputs.aegean }}
           IN_CASA: ${{ inputs.casa }}
+          IN_RCLONE: ${{ inputs.rclone }}
           OTHER: ${{ inputs.other }}
           IMAGES: ${{ inputs.images }}
         run: |
           versions=()
-          for name in CASACORE PYTHON_CASACORE WSCLEAN EVERYBEAM IDG AOFLAGGER CALIBRATE POTATO AEGEAN CASA; do
+          for name in CASACORE PYTHON_CASACORE WSCLEAN EVERYBEAM IDG AOFLAGGER CALIBRATE POTATO AEGEAN CASA RCLONE; do
             value="IN_${name}"
             value="${!value//[[:space:]]/}"
             if [[ -n "${value}" ]]; then versions+=("${name}=${value}"); fi

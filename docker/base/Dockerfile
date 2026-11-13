@@ -67,10 +67,12 @@ RUN test -n "${MEASURES_URL}" \
  && rm /tmp/measures.ztar
 
 # Runtime libraries for every image. Add new ones here rather than in an app
-# image so all images keep sharing this layer.
+# image so all images keep sharing this layer. ca-certificates is for HTTPS,
+# such as rclone copying to an object store.
 FROM os AS runtime-base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
+        ca-certificates \
         python3 \
         libboost-filesystem1.83.0 \
         libboost-program-options1.83.0 \
