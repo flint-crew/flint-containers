@@ -13,11 +13,12 @@ import pytest
 
 
 def test_rclone_copy_to_a_folder(container, tmp_path: Path):
-    # Checked first: a flint without flint.archive doesn't know the rclone
+    from flint import archive
+
+    # Checked first: a flint without rclone_copy doesn't know the rclone
     # container either, and container() would fail on it
-    archive = pytest.importorskip(
-        "flint.archive", reason="this flint does not archive with rclone"
-    )
+    if not hasattr(archive, "rclone_copy"):
+        pytest.skip("this flint does not archive with rclone")
     rclone = container("rclone")
 
     root = tmp_path / "SB60001"
