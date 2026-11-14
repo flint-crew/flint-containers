@@ -149,6 +149,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # To delete the Apptainer files of earlier builds from the cache
+      actions: write
     env:
       MARCH: ${{ matrix.march }}
       PLATFORMS: ${{ matrix.platform }}
@@ -337,6 +339,17 @@ jobs:
           while [[ ! -f calibrate-test.status ]]; do sleep 1; done
           cat calibrate-test.log
           exit "$(cat calibrate-test.status)"
+
+      # GitHub keeps 10 GB of cache for the whole repository and one set of
+      # Apptainer files is several GB, so drop this branch's earlier sets once
+      # new ones are about to be saved. A fork's token can't delete: carry on.
+      - name: Delete the Apptainer files of earlier builds
+        if: steps.passed.outputs.cache-hit != 'true' && steps.tested.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --ref "${GITHUB_REF}" --key "tested-${{ matrix.name }}-${{ steps.cpu.outputs.run }}-" \
+            --limit 100 --json id --jq '.[].id' | xargs -r -n 1 gh cache delete || true
 
       # Every build is pushed by digest and tagged by the publish job, so this
       # job needs no tag. The metadata goes to a file: it is too big for an

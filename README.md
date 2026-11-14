@@ -105,7 +105,7 @@ The check cannot catch everything. When a build fails for a reason it could have
 To keep versions that work:
 
 1. Put the versions that the check prints into `docker-bake.hcl`.
-2. Open a pull request. CI runs the check, then builds every image for every CPU target: about 30 minutes.
+2. Open a pull request. CI runs the check, then builds every image for every CPU target. Only what the change affects is rebuilt and tested again: under a minute if no image changes, and up to about 30 minutes if everything is compiled again.
 
 ## Build
 
