@@ -59,6 +59,13 @@ variable "GOLANG_IMAGE" {
   default = "golang:1.26.11-trixie@sha256:fa340cb59ebeb1d53ac1cccfc334201d938fe5f3458003cccb767096d8e032b8"
 }
 
+# uv installs the Python packages while the images are built. It is not in the
+# published images.
+# https://github.com/astral-sh/uv/pkgs/container/uv
+variable "UV_IMAGE" {
+  default = "ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85"
+}
+
 # ASKAPsoft source is not publicly available, so this is CSIRO's image.
 # https://hub.docker.com/r/csirocass/askapsoft
 variable "ASKAPSOFT_IMAGE" {
@@ -236,6 +243,7 @@ target "calibrate-test" {
   target   = "test"
   contexts = {
     python-casacore-src = git("https://github.com/casacore/python-casacore.git", PYTHON_CASACORE)
+    uv                  = "docker-image://${UV_IMAGE}"
   }
   args = {
     PYTHON_CASACORE = PYTHON_CASACORE
@@ -292,6 +300,7 @@ target "potato" {
     wsclean             = "target:wsclean"
     python-casacore-src = git("https://github.com/casacore/python-casacore.git", PYTHON_CASACORE)
     potato-src          = git("https://gitlab.com/Sunmish/potato.git", POTATO)
+    uv                  = "docker-image://${UV_IMAGE}"
   }
   args = {
     PYTHON_CASACORE = PYTHON_CASACORE
@@ -315,6 +324,7 @@ target "aegean" {
     build-base   = "target:build-base"
     runtime-base = "target:runtime-base"
     aegean-src   = git("https://github.com/PaulHancock/Aegean.git", AEGEAN)
+    uv           = "docker-image://${UV_IMAGE}"
   }
   tags       = tags("aegean")
   cache-from = cache_from("aegean")
@@ -330,6 +340,7 @@ target "casa" {
   contexts = {
     build-base   = "target:build-base"
     runtime-base = "target:runtime-base"
+    uv           = "docker-image://${UV_IMAGE}"
   }
   args = {
     CASA              = CASA

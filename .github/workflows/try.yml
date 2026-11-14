@@ -196,12 +196,21 @@ jobs:
         if: inputs.flint_tests
         uses: eWaterCycle/setup-apptainer@v3
 
+      # uv and a Python environment that the later steps use as "python"
+      - name: Set up uv for the flint tests
+        if: inputs.flint_tests
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
+
       - name: Run flint's container call sites
         if: inputs.flint_tests
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           # Install flint while the images are converted
-          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest \
+          uv pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest \
             > pip-install.log 2>&1 &
           pip_pid=$!
           mkdir -p containers
