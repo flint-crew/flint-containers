@@ -216,10 +216,11 @@ jobs:
           # shellcheck disable=SC2086 # TEST is empty or one word
           docker buildx bake ${{ matrix.targets }} ${TEST} "${outputs[@]}" \
             --provenance=false --metadata-file build.json
-          built=$(for image in ${{ matrix.images }}; do
-            jq -er --arg image "${image}" '.[$image]["containerimage.config.digest"]' build.json
-          done | sha256sum | cut -c1-16)
-          echo "key=tested-${{ matrix.name }}-${{ steps.cpu.outputs.run }}-${built}" >> "$GITHUB_OUTPUT"
+          # A missing digest must stop the run: it would make every key alike
+          built=$(jq -er '[.[$ARGS.positional[]]["containerimage.config.digest"] // error("no digest")] | join(" ")' \
+            build.json --args ${{ matrix.images }})
+          echo "${built}"
+          echo "key=tested-${{ matrix.name }}-${{ steps.cpu.outputs.run }}-$(sha256sum <<<"${built}" | cut -c1-16)" >> "$GITHUB_OUTPUT"
 
       # What the steps below make from the images: their sizes and, on amd64,
       # their Apptainer files (15 seconds to several minutes each to convert).
