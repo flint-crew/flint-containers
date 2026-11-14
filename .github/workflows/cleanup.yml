@@ -4,8 +4,10 @@
 # tags of flint-containers-cache, which nothing reads again.
 #
 # Run it by hand to delete the images of a manual "Build images" run, which
-# are tagged <last release>-<commit>, for example v1.4-1a2b3c4:
-#   gh workflow run cleanup.yml -f tag=v1.4-1a2b3c4
+# are tagged <last release>-<commit>, or the cache of a pull request that
+# closed before this workflow existed:
+#   gh workflow run cleanup.yml -f tag=v1.4.0-1a2b3c4
+#   gh workflow run cleanup.yml -f pull_request=13
 # Release tags can't be deleted this way.
 name: Clean up
 
@@ -15,8 +17,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag of a manual build to delete from every image, e.g. v1.4-1a2b3c4"
-        required: true
+        description: "Tag of a manual build to delete from every image, e.g. v1.4.0-1a2b3c4"
+        required: false
+        default: ""
+        type: string
+      pull_request:
+        description: "Number of a closed pull request whose build cache to delete"
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -28,7 +36,9 @@ env:
 jobs:
   cache:
     # A fork's pull request has no cache of its own
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      || inputs.pull_request != ''
     runs-on: ubuntu-24.04
     permissions:
       packages: write
@@ -36,8 +46,13 @@ jobs:
       - name: Delete the pull request's build cache
         env:
           GH_TOKEN: ${{ github.token }}
-          SUFFIX: -pr-${{ github.event.pull_request.number }}
+          NUMBER: ${{ github.event.pull_request.number || inputs.pull_request }}
         run: |
+          if [[ ! "${NUMBER}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::'${NUMBER}' is not a pull request number."
+            exit 1
+          fi
+          SUFFIX="-pr-${NUMBER}"
           gh api --paginate "${PACKAGES}/flint-containers-cache/versions?per_page=100" |
             jq -r --arg suffix "${SUFFIX}" '.[] | .metadata.container.tags as $tags
               | select(($tags | length) > 0 and ($tags | all(endswith($suffix))))
@@ -48,7 +63,7 @@ jobs:
             done
 
   images:
-    if: github.event_name == 'workflow_dispatch'
+    if: inputs.tag != ''
     runs-on: ubuntu-24.04
     permissions:
       packages: write
