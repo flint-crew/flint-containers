@@ -217,7 +217,7 @@ jobs:
           docker buildx bake ${{ matrix.targets }} ${TEST} "${outputs[@]}" \
             --provenance=false --metadata-file build.json
           # A missing digest must stop the run: it would make every key alike
-          built=$(jq -er '[.[$ARGS.positional[]]["containerimage.config.digest"] // error("no digest")] | join(" ")' \
+          built=$(jq -er '[$ARGS.positional[] as $image | .[$image]["containerimage.config.digest"] // error("no digest for \($image)")] | join(" ")' \
             build.json --args ${{ matrix.images }})
           echo "${built}"
           echo "key=tested-${{ matrix.name }}-${{ steps.cpu.outputs.run }}-$(sha256sum <<<"${built}" | cut -c1-16)" >> "$GITHUB_OUTPUT"
