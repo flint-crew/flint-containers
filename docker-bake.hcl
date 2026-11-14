@@ -59,6 +59,13 @@ variable "GOLANG_IMAGE" {
   default = "golang:1.26.11-trixie@sha256:fa340cb59ebeb1d53ac1cccfc334201d938fe5f3458003cccb767096d8e032b8"
 }
 
+# uv installs the Python packages while the images are built. It is not in the
+# published images.
+# https://github.com/astral-sh/uv/pkgs/container/uv
+variable "UV_IMAGE" {
+  default = "ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85"
+}
+
 # ASKAPsoft source is not publicly available, so this is CSIRO's image.
 # https://hub.docker.com/r/csirocass/askapsoft
 variable "ASKAPSOFT_IMAGE" {
@@ -97,7 +104,9 @@ variable "CACHE_PUSH" { default = false }
 # read before main's, so a branch never overwrites main's cache.
 variable "CACHE_SCOPE" { default = "" }
 
-variable "GITHUB_SHA" { default = "" }
+# Commit recorded in the images. CI sets it only for the images it publishes,
+# so that other builds of the same sources give identical images.
+variable "REVISION" { default = "" }
 
 # --- Helpers --------------------------------------------------------------------
 
@@ -158,7 +167,7 @@ target "_common" {
   }
   labels = {
     "org.opencontainers.image.source"   = "https://github.com/flint-crew/flint-containers"
-    "org.opencontainers.image.revision" = GITHUB_SHA
+    "org.opencontainers.image.revision" = REVISION
     "io.github.flint-crew.ubuntu"       = UBUNTU_IMAGE
   }
 }
@@ -177,9 +186,13 @@ target "_casacore" {
   }
 }
 
+# Its own cache: the images that start from it are built after it, so their
+# caches are read too late to supply it.
 target "build-base" {
-  inherits = ["_base"]
-  target   = "build-base"
+  inherits   = ["_base"]
+  target     = "build-base"
+  cache-from = cache_from("build-base")
+  cache-to   = cache_to("build-base")
 }
 
 target "runtime-base" {
@@ -236,10 +249,15 @@ target "calibrate-test" {
   target   = "test"
   contexts = {
     python-casacore-src = git("https://github.com/casacore/python-casacore.git", PYTHON_CASACORE)
+    uv                  = "docker-image://${UV_IMAGE}"
   }
   args = {
     PYTHON_CASACORE = PYTHON_CASACORE
   }
+  # Its own cache: calibrate's is written later in the same CI run and would
+  # replace this one, losing the test stage.
+  cache-from = concat(cache_from("calibrate-test"), cache_from("calibrate"))
+  cache-to   = cache_to("calibrate-test")
   tags     = []
   output   = ["type=cacheonly"]
 }
@@ -288,6 +306,7 @@ target "potato" {
     wsclean             = "target:wsclean"
     python-casacore-src = git("https://github.com/casacore/python-casacore.git", PYTHON_CASACORE)
     potato-src          = git("https://gitlab.com/Sunmish/potato.git", POTATO)
+    uv                  = "docker-image://${UV_IMAGE}"
   }
   args = {
     PYTHON_CASACORE = PYTHON_CASACORE
@@ -311,6 +330,7 @@ target "aegean" {
     build-base   = "target:build-base"
     runtime-base = "target:runtime-base"
     aegean-src   = git("https://github.com/PaulHancock/Aegean.git", AEGEAN)
+    uv           = "docker-image://${UV_IMAGE}"
   }
   tags       = tags("aegean")
   cache-from = cache_from("aegean")
@@ -326,6 +346,7 @@ target "casa" {
   contexts = {
     build-base   = "target:build-base"
     runtime-base = "target:runtime-base"
+    uv           = "docker-image://${UV_IMAGE}"
   }
   args = {
     CASA              = CASA

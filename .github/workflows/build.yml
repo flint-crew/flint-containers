@@ -8,6 +8,10 @@
 # Images without CPU-specific builds (aegean, casa, askapsoft, rclone) get the
 # -x86-64-v3/-v4 tags as copies of the portable image, so any tag can be
 # pulled for every image.
+#
+# The images are spread over several jobs that run at the same time. The big
+# images that need no compiling (casa, askapsoft) each have their own job, so
+# they don't hold up the rest.
 name: Build images
 
 on:
@@ -71,63 +75,109 @@ jobs:
           echo "Tag: ${tag}"
 
   build:
-    needs: [lint, tag]
+    # No "needs": the builds start at once, beside lint and tag
     strategy:
       fail-fast: false
       matrix:
         include:
+          # targets: bake groups or targets to build. images: what they publish.
           - name: amd64
             runner: ubuntu-24.04
             platform: linux/amd64
             march: x86-64
             suffix: ""
-            group: default
-            images: calibrate wsclean aoflagger potato aegean casa askapsoft rclone
+            targets: compiled
+            images: calibrate wsclean aoflagger potato
+            calibrate_test: true
             cpu_flag: ""
           - name: amd64-v3
             runner: ubuntu-24.04
             platform: linux/amd64
             march: x86-64-v3
             suffix: -x86-64-v3
-            group: compiled
+            targets: compiled
             images: calibrate wsclean aoflagger potato
+            calibrate_test: true
             cpu_flag: avx2
           - name: amd64-v4
             runner: ubuntu-24.04
             platform: linux/amd64
             march: x86-64-v4
             suffix: -x86-64-v4
-            group: compiled
+            targets: compiled
             images: calibrate wsclean aoflagger potato
+            calibrate_test: true
             cpu_flag: avx512f
           - name: arm64
             runner: ubuntu-24.04-arm
             platform: linux/arm64
             march: armv8-a
             suffix: ""
-            group: arm64
+            targets: arm64
             images: calibrate wsclean aoflagger potato aegean rclone
+            calibrate_test: true
+            cpu_flag: ""
+          - name: casa
+            runner: ubuntu-24.04
+            platform: linux/amd64
+            march: x86-64
+            suffix: ""
+            targets: casa
+            images: casa
+            calibrate_test: false
+            cpu_flag: ""
+          - name: askapsoft
+            runner: ubuntu-24.04
+            platform: linux/amd64
+            march: x86-64
+            suffix: ""
+            targets: askapsoft
+            images: askapsoft
+            calibrate_test: false
+            cpu_flag: ""
+          - name: aegean-rclone
+            runner: ubuntu-24.04
+            platform: linux/amd64
+            march: x86-64
+            suffix: ""
+            targets: aegean rclone
+            images: aegean rclone
+            calibrate_test: false
             cpu_flag: ""
     name: build (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
+      # To delete the Apptainer files of earlier builds from the cache
+      actions: write
     env:
       MARCH: ${{ matrix.march }}
       PLATFORMS: ${{ matrix.platform }}
       TAGS: ci
-      MEASURES_REFRESH: ${{ github.run_id }}
-      CASA_DATA_REFRESH: ${{ github.run_id }}
-      GITHUB_SHA: ${{ github.sha }}
+      REVISION: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && github.sha || '' }}
     steps:
       - uses: actions/checkout@v7
 
+      # Published images always download the measures and CASA data again.
+      # Other runs download them once a day, so that runs on the same day
+      # share one build cache.
+      - name: Choose when to download the measures and CASA data again
+        run: |
+          if [[ "${PUBLISH}" == "true" ]]; then
+            refresh="${{ github.run_id }}"
+          else
+            refresh="$(date -u +%F)"
+          fi
+          echo "MEASURES_REFRESH=${refresh}" >> "$GITHUB_ENV"
+          echo "CASA_DATA_REFRESH=${refresh}" >> "$GITHUB_ENV"
+
       # The images plus build cache need more space than the runner has free.
+      # Deleting takes about 2 minutes, so it runs behind the steps that follow.
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h /
+          sudo nohup rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            > /dev/null 2>&1 &
 
       # x86-64-v4 binaries need AVX-512, which GitHub's runners may not have.
       - name: Can this runner run the binaries?
@@ -150,27 +200,79 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run calibrate's test suite
-        if: steps.cpu.outputs.run == 'true'
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          targets: test
+      # calibrate's own test suite takes a minute or two when its inputs
+      # change, so it runs behind the steps that follow, which wait for it at
+      # the end. The builder shares the stages it has in common with the build.
+      - name: Start calibrate's test suite
+        if: matrix.calibrate_test && steps.cpu.outputs.run == 'true'
         env:
-          CACHE_REF: ${{ env.CACHE_REF }}
-
-      - name: Build
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          targets: ${{ matrix.group }}
-          load: true
-        env:
-          CACHE_REF: ${{ env.CACHE_REF }}
           CACHE_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          nohup sh -c 'docker buildx bake test > calibrate-test.log 2>&1; echo $? > calibrate-test.status' \
+            > /dev/null 2>&1 &
+
+      # The images stay in the builder: an image that comes whole from the
+      # build cache is not even downloaded. The key names what was built, from
+      # the image configurations, which record every layer and setting.
+      - name: Build
+        id: build
+        env:
+          CACHE_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          FLINT_TESTS: ${{ steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64' }}
+        run: |
+          outputs=()
+          for image in ${{ matrix.images }}; do
+            outputs+=(--set "${image}.output=type=image")
+          done
+          docker buildx bake ${{ matrix.targets }} "${outputs[@]}" \
+            --provenance=false --metadata-file build.json
+          # A missing digest must stop the run: it would make every key alike
+          built=$(jq -er '[$ARGS.positional[] as $image | .[$image]["containerimage.config.digest"] // error("no digest for \($image)")] | join(" ")' \
+            build.json --args ${{ matrix.images }})
+          echo "${built}"
+          echo "key=${{ matrix.name }}-${{ steps.cpu.outputs.run }}-$(sha256sum <<<"${built}" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          # The flint commit the tests run against, where they run
+          flint=none
+          if [[ "${FLINT_TESTS}" == "true" ]]; then
+            flint=$(git ls-remote https://github.com/flint-crew/flint refs/heads/main | cut -f1)
+            test -n "${flint}"
+          fi
+          echo "flint=${flint}" >> "$GITHUB_OUTPUT"
+
+      # Saved only when the whole job passes, so finding it means that these
+      # images already passed every test here, with this flint and these
+      # tests. Nothing is left to do but wait for calibrate's test suite.
+      - name: Look for a run that passed with these images
+        id: passed
+        uses: actions/cache@v6
+        with:
+          path: containers/sizes.md
+          key: passed-${{ steps.build.outputs.key }}-${{ steps.build.outputs.flint }}-${{ hashFiles('tests/**') }}
+
+      # What the steps below make from the images: their sizes and, on amd64,
+      # their Apptainer files (15 seconds to several minutes each to convert).
+      # Also saved only when the job passes, so finding it means these images
+      # already passed the smoke tests, which are then skipped.
+      - name: Look for the Apptainer files of these images
+        id: tested
+        if: steps.passed.outputs.cache-hit != 'true'
+        uses: actions/cache@v6
+        with:
+          path: containers
+          key: tested-${{ steps.build.outputs.key }}-${{ hashFiles('tests/smoke.sh') }}
+
+      # Everything is in the build cache by now, so this only exports.
+      - name: Load the images into Docker
+        if: steps.passed.outputs.cache-hit != 'true' && steps.tested.outputs.cache-hit != 'true'
+        run: |
+          outputs=()
+          for image in ${{ matrix.images }}; do
+            outputs+=(--set "${image}.output=type=docker")
+          done
+          docker buildx bake ${{ matrix.targets }} "${outputs[@]}"
 
       - name: Smoke tests
-        if: steps.cpu.outputs.run == 'true'
+        if: steps.passed.outputs.cache-hit != 'true' && steps.tested.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true'
         run: |
           for image in ${{ matrix.images }}; do
             echo "::group::${image}"
@@ -180,106 +282,107 @@ jobs:
 
       - name: Image sizes
         run: |
-          {
-            echo "### ${{ matrix.name }} (${{ matrix.march }})"
-            echo "| Image | Size (uncompressed) |"
-            echo "|---|---|"
-            for image in ${{ matrix.images }}; do
-              size=$(docker image inspect --format '{{.Size}}' "${REGISTRY}/${image}:ci")
-              echo "| ${image} | $(numfmt --to=iec "${size}") |"
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p containers
+          if [[ ! -f containers/sizes.md ]]; then
+            {
+              echo "### ${{ matrix.name }} (${{ matrix.march }})"
+              echo "| Image | Size (uncompressed) |"
+              echo "|---|---|"
+              for image in ${{ matrix.images }}; do
+                size=$(docker image inspect --format '{{.Size}}' "${REGISTRY}/${image}:ci")
+                echo "| ${image} | $(numfmt --to=iec "${size}") |"
+              done
+            } > containers/sizes.md
+          fi
+          cat containers/sizes.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Set up Python for the flint tests
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
-        uses: actions/setup-python@v7
+      # uv and a Python environment that the later steps use as "python"
+      - name: Set up uv for the flint tests
+        if: steps.passed.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
+          activate-environment: true
+          enable-cache: true
 
       - name: Set up Apptainer
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
+        if: steps.passed.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         uses: eWaterCycle/setup-apptainer@v3
 
-      # askapsoft is CSIRO's image, which only changes with ASKAPSOFT_IMAGE, and
-      # converting it to an Apptainer file takes about 7 minutes. Keep the file,
-      # keyed on the image's layers.
-      - name: Cache key for the askapsoft Apptainer file
-        id: askapsoft-sif
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64' && contains(matrix.images, 'askapsoft')
-        run: |
-          layers=$(docker image inspect --format '{{json .RootFS.Layers}}' "${REGISTRY}/askapsoft:ci" | sha256sum | cut -c1-16)
-          echo "key=askapsoft-sif-${layers}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v6
-        if: steps.askapsoft-sif.outputs.key
-        with:
-          path: containers/flint-containers_askapsoft.sif
-          key: ${{ steps.askapsoft-sif.outputs.key }}
-
       - name: Run flint's container call sites
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
+        if: steps.passed.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           # Install flint while the images are converted
-          python -m pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest \
+          uv pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@${{ steps.build.outputs.flint }}" pytest \
             > pip-install.log 2>&1 &
           pip_pid=$!
-          mkdir -p containers
+          # One at a time: conversions that run together corrupt Apptainer's
+          # shared cache, and are no faster.
           for image in ${{ matrix.images }}; do
             sif="containers/flint-containers_${image}.sif"
             if [[ -f "${sif}" ]]; then
-              echo "Using cached ${sif}"
+              echo "Using ${sif} from the earlier run"
             else
               apptainer build "${sif}" "docker-daemon://${REGISTRY}/${image}:ci"
+              docker image rm "${REGISTRY}/${image}:ci"
             fi
-            docker image rm "${REGISTRY}/${image}:ci"
           done
           if ! wait "${pip_pid}"; then cat pip-install.log; exit 1; fi
           python -m pytest tests/flint_compat -v -rs \
             --container-dir containers \
             --expect "$(tr ' ' ',' <<<"${{ matrix.images }}")"
 
-      # Portable builds are pushed by digest and joined into one multi-arch
-      # tag by the publish job; CPU-specific builds are amd64-only and tagged here.
-      - name: Push portable images by digest
-        if: env.PUBLISH == 'true' && matrix.suffix == ''
-        id: push-digest
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          targets: ${{ matrix.group }}
-          set: "*.output=type=image,push-by-digest=true,name-canonical=true,push=true"
-        env:
-          CACHE_REF: ${{ env.CACHE_REF }}
-
-      - name: Save digests
-        if: env.PUBLISH == 'true' && matrix.suffix == ''
+      - name: Wait for calibrate's test suite
+        if: matrix.calibrate_test && steps.cpu.outputs.run == 'true'
         run: |
+          while [[ ! -f calibrate-test.status ]]; do sleep 1; done
+          cat calibrate-test.log
+          exit "$(cat calibrate-test.status)"
+
+      # GitHub keeps 10 GB of cache for the whole repository and one set of
+      # Apptainer files is several GB, so drop this branch's earlier sets once
+      # new ones are about to be saved. A fork's token can't delete: carry on.
+      - name: Delete the Apptainer files of earlier builds
+        if: steps.passed.outputs.cache-hit != 'true' && steps.tested.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --ref "${GITHUB_REF}" --key "tested-${{ matrix.name }}-${{ steps.cpu.outputs.run }}-" \
+            --limit 100 --json id --jq '.[].id' | xargs -r -n 1 gh cache delete || true
+
+      # Every build is pushed by digest and tagged by the publish job, so this
+      # job needs no tag. The metadata goes to a file: it is too big for an
+      # environment variable (several hundred KB), and also holds entries that
+      # are not targets, such as the list of build warnings.
+      - name: Push images by digest
+        if: env.PUBLISH == 'true'
+        run: |
+          # The name has no tag: a tagged name can't be pushed by digest
+          outputs=()
+          for image in ${{ matrix.images }}; do
+            outputs+=(--set "${image}.tags=${REGISTRY}/${image}"
+                      --set "${image}.output=type=image,push-by-digest=true,name-canonical=true,push=true")
+          done
+          docker buildx bake ${{ matrix.targets }} "${outputs[@]}" --metadata-file metadata.json
+          # One line per image: its name, digest and CPU-specific suffix, if any
           mkdir -p digests
-          jq -r 'to_entries[] | select(.value["containerimage.digest"]) | "\(.key) \(.value["containerimage.digest"])"' \
-            <<<'${{ steps.push-digest.outputs.metadata }}' > "digests/${{ matrix.name }}.txt"
+          jq -r --arg suffix "${{ matrix.suffix }}" \
+            'to_entries[] | select(.value | type == "object") | select(.value["containerimage.digest"])
+             | "\(.key) \(.value["containerimage.digest"]) \($suffix)"' \
+            metadata.json > "digests/${{ matrix.name }}.txt"
           cat "digests/${{ matrix.name }}.txt"
+          # An empty file would give the publish job nothing to tag
+          test -s "digests/${{ matrix.name }}.txt"
 
       - uses: actions/upload-artifact@v7
-        if: env.PUBLISH == 'true' && matrix.suffix == ''
+        if: env.PUBLISH == 'true'
         with:
           name: digests-${{ matrix.name }}
           path: digests/
 
-      - name: Push CPU-specific images
-        if: env.PUBLISH == 'true' && matrix.suffix != ''
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          targets: ${{ matrix.group }}
-          push: true
-        env:
-          CACHE_REF: ${{ env.CACHE_REF }}
-          TAGS: ${{ github.event_name == 'release' && format('{0},latest', needs.tag.outputs.tag) || needs.tag.outputs.tag }}
-          TAG_SUFFIX: ${{ matrix.suffix }}
-
   publish:
-    needs: [tag, build]
+    needs: [lint, tag, build]
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
@@ -300,17 +403,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create multi-arch tags
+      # The portable tag joins the amd64 and arm64 builds; a CPU-specific tag
+      # has the one amd64 build.
+      - name: Create tags
         env:
           TAG: ${{ needs.tag.outputs.tag }}
           LATEST: ${{ github.event_name == 'release' }}
         run: |
-          for image in calibrate wsclean aoflagger potato aegean casa askapsoft rclone; do
-            sources=$(awk -v img="${image}" '$1 == img {print ENVIRON["REGISTRY"] "/" img "@" $2}' digests/*.txt)
-            tags=(-t "${REGISTRY}/${image}:${TAG}")
-            if [[ "${LATEST}" == "true" ]]; then tags+=(-t "${REGISTRY}/${image}:latest"); fi
+          tag_image() {
+            local image=$1 suffix=$2 sources
+            sources=$(awk -v img="${image}" -v suffix="${suffix}" \
+              '$1 == img && $3 == suffix {print ENVIRON["REGISTRY"] "/" img "@" $2}' digests/*.txt)
+            test -n "${sources}"
+            tags=(-t "${REGISTRY}/${image}:${TAG}${suffix}")
+            if [[ "${LATEST}" == "true" ]]; then tags+=(-t "${REGISTRY}/${image}:latest${suffix}"); fi
             # shellcheck disable=SC2086
             docker buildx imagetools create "${tags[@]}" ${sources}
+          }
+          for image in calibrate wsclean aoflagger potato aegean casa askapsoft rclone; do
+            tag_image "${image}" ""
+          done
+          for image in calibrate wsclean aoflagger potato; do
+            tag_image "${image}" -x86-64-v3
+            tag_image "${image}" -x86-64-v4
           done
 
       - name: Copy portable images to the CPU-specific tags

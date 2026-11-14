@@ -526,7 +526,7 @@ def build(
 def parse_overrides(bake: Bake, args: list[str]) -> dict[str, str]:
     """NAME=REF arguments as a dict, refusing unknown names and odd characters"""
     # These say where and how CI builds, not what is built
-    settings = {"CACHE_REF", "CACHE_PUSH", "CACHE_SCOPE", "GITHUB_SHA", "PLATFORMS"}
+    settings = {"CACHE_REF", "CACHE_PUSH", "CACHE_SCOPE", "PLATFORMS", "REVISION"}
     settings |= {"REGISTRY", "TAGS", "TAG_SUFFIX"}
     names = sorted(set(bake.variables) - settings)
     overrides = {}
