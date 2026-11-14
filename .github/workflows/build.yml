@@ -349,7 +349,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh cache list --ref "${GITHUB_REF}" --key "tested-${{ matrix.name }}-${{ steps.cpu.outputs.run }}-" \
-            --limit 100 --json id --jq '.[].id' | xargs -r -n 1 gh cache delete || true
+            --limit 100 --json id,key --jq '.[] | "\(.id) \(.key)"' |
+            while read -r id key; do
+              gh cache delete "${id}" && echo "Deleted ${key}"
+            done || true
 
       # Every build is pushed by digest and tagged by the publish job, so this
       # job needs no tag. The metadata goes to a file: it is too big for an
