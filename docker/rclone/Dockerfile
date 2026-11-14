@@ -19,8 +19,7 @@ RUN mkdir -p /opt/rclone/bin \
  && CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" \
     go build -C /src/rclone -trimpath \
         -ldflags "-s -X github.com/rclone/rclone/fs.Version=${RCLONE}" \
-        -o /opt/rclone/bin/rclone \
- && go clean -cache -modcache
+        -o /opt/rclone/bin/rclone
 
 FROM runtime-base AS rclone
 COPY --from=build /opt/rclone /opt/rclone
