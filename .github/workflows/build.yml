@@ -300,9 +300,13 @@ jobs:
       - name: Push portable images by digest
         if: env.PUBLISH == 'true' && matrix.suffix == ''
         run: |
-          docker buildx bake ${{ matrix.targets }} \
-            --set "*.output=type=image,push-by-digest=true,name-canonical=true,push=true" \
-            --metadata-file metadata.json
+          # The name has no tag: a tagged name can't be pushed by digest
+          outputs=()
+          for image in ${{ matrix.images }}; do
+            outputs+=(--set "${image}.tags=${REGISTRY}/${image}"
+                      --set "${image}.output=type=image,push-by-digest=true,name-canonical=true,push=true")
+          done
+          docker buildx bake ${{ matrix.targets }} "${outputs[@]}" --metadata-file metadata.json
           mkdir -p digests
           jq -r 'to_entries[] | select(.value | type == "object") | select(.value["containerimage.digest"])
                  | "\(.key) \(.value["containerimage.digest"])"' \
