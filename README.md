@@ -37,7 +37,7 @@ If step 2 fails (glibc older than 2.33), run `grep -o -w -m1 -e avx512f -e avx2 
 
 A tag built for a newer CPU exits at once with `Illegal instruction`.
 
-`latest`, `latest-x86-64-v3` and `latest-x86-64-v4` point to the newest release. aegean, casa and askapsoft have no compiled code, so their v3 and v4 tags are the plain image. casa and askapsoft are amd64 only and run under Rosetta on Apple Silicon.
+`latest`, `latest-x86-64-v3` and `latest-x86-64-v4` point to the newest release. aegean, casa and askapsoft have no compiled code, and rclone gains little from a CPU-specific build, so their v3 and v4 tags are the plain image. casa and askapsoft are amd64 only and run under Rosetta on Apple Silicon.
 
 ## Images
 
@@ -50,6 +50,7 @@ A tag built for a newer CPU exits at once with `Illegal instruction`.
 | `aegean` | [AegeanTools](https://github.com/PaulHancock/Aegean) by Paul Hancock | `BANE`, `aegean` |
 | `casa` | [CASA](https://casa.nrao.edu/) tasks from `casatasks` | `mstransform`, `cvel`, `gaincal`, `applycal` |
 | `askapsoft` | [ASKAPsoft](https://www.atnf.csiro.au/computing/software/askapsoft/sdp/docs/current) from CSIRO | `linmos` |
+| `rclone` | [rclone](https://rclone.org/), a static build | `rclone copy`, to archive products to a folder or an object store |
 
 To see the versions inside an image, run `docker inspect --format '{{json .Config.Labels}}' <image>` or `apptainer inspect <file>.sif`.
 
@@ -57,6 +58,7 @@ To see the versions inside an image, run `docker inspect --format '{{json .Confi
 - casacore's measures data is in `/opt/measures`. `/opt/measures/SOURCE` records where and when it was downloaded.
 - The `casa` command runs `casa -c <code>` with `casatasks`. The GUI, plotms and interactive shell are not included.
 - askapsoft is CSIRO's published image, pinned by digest, because its source is not public.
+- rclone is compiled with the Go image pinned in `GOLANG_IMAGE`. A new rclone release may need a newer Go: its `go.mod` says which.
 
 ### Moving to casacore 3.8
 

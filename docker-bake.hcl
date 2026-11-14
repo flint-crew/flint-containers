@@ -49,6 +49,16 @@ variable "AEGEAN" { default = "v2.3.4" }
 variable "CASA" { default = "6.7.6.14" }
 variable "CASACONFIG" { default = "1.5.2" }
 
+# https://github.com/rclone/rclone
+variable "RCLONE" { default = "v1.75.2" }
+
+# Go that compiles rclone. rclone's go.mod states the oldest Go it accepts
+# (v1.75.2 needs >= 1.26.0); its releases are built with the newest 1.26.
+# https://hub.docker.com/_/golang
+variable "GOLANG_IMAGE" {
+  default = "golang:1.26.11-trixie@sha256:fa340cb59ebeb1d53ac1cccfc334201d938fe5f3458003cccb767096d8e032b8"
+}
+
 # ASKAPsoft source is not publicly available, so this is CSIRO's image.
 # https://hub.docker.com/r/csirocass/askapsoft
 variable "ASKAPSOFT_IMAGE" {
@@ -118,7 +128,7 @@ function "git" {
 
 # All published images (amd64)
 group "default" {
-  targets = ["calibrate", "wsclean", "aoflagger", "potato", "aegean", "casa", "askapsoft"]
+  targets = ["calibrate", "wsclean", "aoflagger", "potato", "aegean", "casa", "askapsoft", "rclone"]
 }
 
 # Images with compiled code, built once per CPU target
@@ -128,7 +138,7 @@ group "compiled" {
 
 # Images available for arm64 (casa and askapsoft are amd64-only upstream)
 group "arm64" {
-  targets = ["calibrate", "wsclean", "aoflagger", "potato", "aegean"]
+  targets = ["calibrate", "wsclean", "aoflagger", "potato", "aegean", "rclone"]
 }
 
 group "test" {
@@ -339,5 +349,27 @@ target "askapsoft" {
   tags = tags("askapsoft")
   labels = {
     "io.github.flint-crew.askapsoft" = ASKAPSOFT_IMAGE
+  }
+}
+
+# Built once per platform, not per CPU target like the "compiled" group, as Go
+# code gains little from it. Its x86-64-v3/v4 tags copy the portable image.
+target "rclone" {
+  inherits = ["_common"]
+  context  = "docker/rclone"
+  contexts = {
+    runtime-base = "target:runtime-base"
+    rclone-src   = git("https://github.com/rclone/rclone.git", RCLONE)
+  }
+  args = {
+    GOLANG_IMAGE = GOLANG_IMAGE
+    RCLONE       = RCLONE
+  }
+  tags       = tags("rclone")
+  cache-from = cache_from("rclone")
+  cache-to   = cache_to("rclone")
+  labels = {
+    "io.github.flint-crew.rclone" = RCLONE
+    "io.github.flint-crew.go"     = GOLANG_IMAGE
   }
 }
