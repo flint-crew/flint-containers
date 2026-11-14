@@ -205,16 +205,12 @@ jobs:
             > pip-install.log 2>&1 &
           pip_pid=$!
           mkdir -p containers
-          # Converted side by side; a failed conversion fails the step at its wait
-          sif_pids=()
+          # One at a time: conversions that run together corrupt Apptainer's
+          # shared cache, and are no faster.
           for image in ${IMAGES}; do
-            (
-              apptainer build "containers/flint-containers_${image}.sif" "docker-daemon://${REGISTRY}/${image}:${TAG}"
-              docker image rm "${REGISTRY}/${image}:${TAG}"
-            ) &
-            sif_pids+=($!)
+            apptainer build "containers/flint-containers_${image}.sif" "docker-daemon://${REGISTRY}/${image}:${TAG}"
+            docker image rm "${REGISTRY}/${image}:${TAG}"
           done
-          for pid in "${sif_pids[@]}"; do wait "${pid}"; done
           if ! wait "${pip_pid}"; then cat pip-install.log; exit 1; fi
           python -m pytest tests/flint_compat -v -rs \
             --container-dir containers \
