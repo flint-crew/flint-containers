@@ -8,6 +8,10 @@
 # Images without CPU-specific builds (aegean, casa, askapsoft, rclone) get the
 # -x86-64-v3/-v4 tags as copies of the portable image, so any tag can be
 # pulled for every image.
+#
+# The images are spread over several jobs that run at the same time. The big
+# images that need no compiling (casa, askapsoft) each have their own job, so
+# they don't hold up the rest.
 name: Build images
 
 on:
@@ -71,42 +75,75 @@ jobs:
           echo "Tag: ${tag}"
 
   build:
-    needs: [lint, tag]
+    # Not lint: the builds start at once and lint runs beside them
+    needs: tag
     strategy:
       fail-fast: false
       matrix:
         include:
+          # targets: bake groups or targets to build. images: what they publish.
           - name: amd64
             runner: ubuntu-24.04
             platform: linux/amd64
             march: x86-64
             suffix: ""
-            group: default
-            images: calibrate wsclean aoflagger potato aegean casa askapsoft rclone
+            targets: compiled
+            images: calibrate wsclean aoflagger potato
+            calibrate_test: true
             cpu_flag: ""
           - name: amd64-v3
             runner: ubuntu-24.04
             platform: linux/amd64
             march: x86-64-v3
             suffix: -x86-64-v3
-            group: compiled
+            targets: compiled
             images: calibrate wsclean aoflagger potato
+            calibrate_test: true
             cpu_flag: avx2
           - name: amd64-v4
             runner: ubuntu-24.04
             platform: linux/amd64
             march: x86-64-v4
             suffix: -x86-64-v4
-            group: compiled
+            targets: compiled
             images: calibrate wsclean aoflagger potato
+            calibrate_test: true
             cpu_flag: avx512f
           - name: arm64
             runner: ubuntu-24.04-arm
             platform: linux/arm64
             march: armv8-a
             suffix: ""
-            group: arm64
+            targets: arm64
             images: calibrate wsclean aoflagger potato aegean rclone
+            calibrate_test: true
+            cpu_flag: ""
+          - name: casa
+            runner: ubuntu-24.04
+            platform: linux/amd64
+            march: x86-64
+            suffix: ""
+            targets: casa
+            images: casa
+            calibrate_test: false
+            cpu_flag: ""
+          - name: askapsoft
+            runner: ubuntu-24.04
+            platform: linux/amd64
+            march: x86-64
+            suffix: ""
+            targets: askapsoft
+            images: askapsoft
+            calibrate_test: false
+            cpu_flag: ""
+          - name: aegean-rclone
+            runner: ubuntu-24.04
+            platform: linux/amd64
+            march: x86-64
+            suffix: ""
+            targets: aegean rclone
+            images: aegean rclone
+            calibrate_test: false
             cpu_flag: ""
     name: build (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
@@ -162,24 +199,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run calibrate's test suite
-        if: steps.cpu.outputs.run == 'true'
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          targets: test
+      # One bake builds the images and runs calibrate's own test suite, side by
+      # side. Only the images are loaded into Docker: the tests leave nothing.
+      - name: Build, and run calibrate's test suite
         env:
-          CACHE_REF: ${{ env.CACHE_REF }}
-
-      - name: Build
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          targets: ${{ matrix.group }}
-          load: true
-        env:
-          CACHE_REF: ${{ env.CACHE_REF }}
           CACHE_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          TEST: ${{ matrix.calibrate_test && steps.cpu.outputs.run == 'true' && 'test' || '' }}
+        run: |
+          outputs=()
+          for image in ${{ matrix.images }}; do
+            outputs+=(--set "${image}.output=type=docker")
+          done
+          # shellcheck disable=SC2086 # TEST is empty or one word
+          docker buildx bake ${{ matrix.targets }} ${TEST} "${outputs[@]}"
 
       - name: Smoke tests
         if: steps.cpu.outputs.run == 'true'
@@ -215,21 +247,25 @@ jobs:
         if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         uses: eWaterCycle/setup-apptainer@v3
 
-      # askapsoft is CSIRO's image, which only changes with ASKAPSOFT_IMAGE, and
-      # converting it to an Apptainer file takes about 7 minutes. Keep the file,
-      # keyed on the image's layers.
-      - name: Cache key for the askapsoft Apptainer file
-        id: askapsoft-sif
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64' && contains(matrix.images, 'askapsoft')
+      # Converting an image to an Apptainer file takes from 15 seconds to
+      # several minutes (askapsoft). Keep the files, keyed on what is in the
+      # images: their layers and settings, but not their labels, which change
+      # with every commit.
+      - name: Cache key for the Apptainer files
+        id: sif
+        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         run: |
-          layers=$(docker image inspect --format '{{json .RootFS.Layers}}' "${REGISTRY}/askapsoft:ci" | sha256sum | cut -c1-16)
-          echo "key=askapsoft-sif-${layers}" >> "$GITHUB_OUTPUT"
+          contents=$(for image in ${{ matrix.images }}; do
+            docker image inspect "${REGISTRY}/${image}:ci" \
+              --format '{{json .RootFS.Layers}} {{json .Config.Env}} {{json .Config.Entrypoint}} {{json .Config.Cmd}} {{json .Config.WorkingDir}} {{json .Config.User}}'
+          done | sha256sum | cut -c1-16)
+          echo "key=sif-${{ matrix.name }}-${contents}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v6
-        if: steps.askapsoft-sif.outputs.key
+        if: steps.sif.outputs.key
         with:
-          path: containers/flint-containers_askapsoft.sif
-          key: ${{ steps.askapsoft-sif.outputs.key }}
+          path: containers
+          key: ${{ steps.sif.outputs.key }}
 
       - name: Run flint's container call sites
         if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
@@ -264,7 +300,7 @@ jobs:
       - name: Push portable images by digest
         if: env.PUBLISH == 'true' && matrix.suffix == ''
         run: |
-          docker buildx bake ${{ matrix.group }} \
+          docker buildx bake ${{ matrix.targets }} \
             --set "*.output=type=image,push-by-digest=true,name-canonical=true,push=true" \
             --metadata-file metadata.json
           mkdir -p digests
@@ -286,7 +322,7 @@ jobs:
         uses: docker/bake-action@v7
         with:
           source: .
-          targets: ${{ matrix.group }}
+          targets: ${{ matrix.targets }}
           push: true
         env:
           CACHE_REF: ${{ env.CACHE_REF }}
@@ -294,7 +330,7 @@ jobs:
           TAG_SUFFIX: ${{ matrix.suffix }}
 
   publish:
-    needs: [tag, build]
+    needs: [lint, tag, build]
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
