@@ -40,8 +40,8 @@ RUN version="${PYTHON_CASACORE#v}" \
         --config-settings=cmake.define.CASACORE_ROOT_DIR=/opt/casacore \
         --config-settings=cmake.define.BUILD_TESTING=OFF \
         /src/python-casacore
-# The measures data is new in every CI run. Copied after the python-casacore
-# build so that only the tests run again, not the build.
+# The measures data changes whenever it is downloaded again. Copied after the
+# python-casacore build so that only the tests run again, not the build.
 COPY --from=casacore /opt/measures /opt/measures
 RUN CALIBRATE_BIN_DIR=/opt/calibrate/bin /tmp/venv/bin/python -m pytest -q /src/calibrate/tests
 

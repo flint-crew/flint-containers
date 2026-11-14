@@ -117,11 +117,22 @@ jobs:
       MARCH: ${{ matrix.march }}
       PLATFORMS: ${{ matrix.platform }}
       TAGS: ci
-      MEASURES_REFRESH: ${{ github.run_id }}
-      CASA_DATA_REFRESH: ${{ github.run_id }}
       GITHUB_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
+
+      # Published images always download the measures and CASA data again.
+      # Other runs download them once a day, so that runs on the same day
+      # share one build cache.
+      - name: Choose when to download the measures and CASA data again
+        run: |
+          if [[ "${PUBLISH}" == "true" ]]; then
+            refresh="${{ github.run_id }}"
+          else
+            refresh="$(date -u +%F)"
+          fi
+          echo "MEASURES_REFRESH=${refresh}" >> "$GITHUB_ENV"
+          echo "CASA_DATA_REFRESH=${refresh}" >> "$GITHUB_ENV"
 
       # The images plus build cache need more space than the runner has free.
       # Deleting takes about 2 minutes, so it runs behind the steps that follow.
