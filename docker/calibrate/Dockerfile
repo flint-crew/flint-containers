@@ -28,7 +28,6 @@ RUN cmake -S . -B /tmp/build -G Ninja \
 FROM build AS test
 ARG BUILD_NUMPY
 ARG PYTHON_CASACORE
-COPY --from=casacore /opt/measures /opt/measures
 COPY --from=python-casacore-src / /src/python-casacore
 # The git context has no .git directory, so setuptools-scm needs the version;
 # a commit is given as 0+g<commit>.
@@ -40,8 +39,11 @@ RUN version="${PYTHON_CASACORE#v}" \
     /tmp/venv/bin/pip install --no-cache-dir \
         --config-settings=cmake.define.CASACORE_ROOT_DIR=/opt/casacore \
         --config-settings=cmake.define.BUILD_TESTING=OFF \
-        /src/python-casacore \
- && CALIBRATE_BIN_DIR=/opt/calibrate/bin /tmp/venv/bin/python -m pytest -q /src/calibrate/tests
+        /src/python-casacore
+# The measures data is new in every CI run. Copied after the python-casacore
+# build so that only the tests run again, not the build.
+COPY --from=casacore /opt/measures /opt/measures
+RUN CALIBRATE_BIN_DIR=/opt/calibrate/bin /tmp/venv/bin/python -m pytest -q /src/calibrate/tests
 
 FROM casacore AS calibrate
 COPY --from=build /opt/calibrate /opt/calibrate

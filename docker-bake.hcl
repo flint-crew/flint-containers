@@ -240,6 +240,10 @@ target "calibrate-test" {
   args = {
     PYTHON_CASACORE = PYTHON_CASACORE
   }
+  # Its own cache: calibrate's is written later in the same CI run and would
+  # replace this one, losing the test stage.
+  cache-from = concat(cache_from("calibrate-test"), cache_from("calibrate"))
+  cache-to   = cache_to("calibrate-test")
   tags     = []
   output   = ["type=cacheonly"]
 }

@@ -171,10 +171,11 @@ jobs:
           python-version: "3.12"
 
       # The images plus build cache need more space than the runner has free.
+      # Deleting takes about 2 minutes, so it runs behind the steps that follow.
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h /
+          sudo nohup rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            > /dev/null 2>&1 &
 
       - uses: docker/setup-buildx-action@v4
 
@@ -204,10 +205,16 @@ jobs:
             > pip-install.log 2>&1 &
           pip_pid=$!
           mkdir -p containers
+          # Converted side by side; a failed conversion fails the step at its wait
+          sif_pids=()
           for image in ${IMAGES}; do
-            apptainer build "containers/flint-containers_${image}.sif" "docker-daemon://${REGISTRY}/${image}:${TAG}"
-            docker image rm "${REGISTRY}/${image}:${TAG}"
+            (
+              apptainer build "containers/flint-containers_${image}.sif" "docker-daemon://${REGISTRY}/${image}:${TAG}"
+              docker image rm "${REGISTRY}/${image}:${TAG}"
+            ) &
+            sif_pids+=($!)
           done
+          for pid in "${sif_pids[@]}"; do wait "${pid}"; done
           if ! wait "${pip_pid}"; then cat pip-install.log; exit 1; fi
           python -m pytest tests/flint_compat -v -rs \
             --container-dir containers \

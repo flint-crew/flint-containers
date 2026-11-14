@@ -124,10 +124,11 @@ jobs:
       - uses: actions/checkout@v7
 
       # The images plus build cache need more space than the runner has free.
+      # Deleting takes about 2 minutes, so it runs behind the steps that follow.
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          df -h /
+          sudo nohup rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            > /dev/null 2>&1 &
 
       # x86-64-v4 binaries need AVX-512, which GitHub's runners may not have.
       - name: Can this runner run the binaries?
@@ -225,15 +226,21 @@ jobs:
             > pip-install.log 2>&1 &
           pip_pid=$!
           mkdir -p containers
+          # Converted side by side; a failed conversion fails the step at its wait
+          sif_pids=()
           for image in ${{ matrix.images }}; do
             sif="containers/flint-containers_${image}.sif"
-            if [[ -f "${sif}" ]]; then
-              echo "Using cached ${sif}"
-            else
-              apptainer build "${sif}" "docker-daemon://${REGISTRY}/${image}:ci"
-            fi
-            docker image rm "${REGISTRY}/${image}:ci"
+            (
+              if [[ -f "${sif}" ]]; then
+                echo "Using cached ${sif}"
+              else
+                apptainer build "${sif}" "docker-daemon://${REGISTRY}/${image}:ci"
+              fi
+              docker image rm "${REGISTRY}/${image}:ci"
+            ) &
+            sif_pids+=($!)
           done
+          for pid in "${sif_pids[@]}"; do wait "${pid}"; done
           if ! wait "${pip_pid}"; then cat pip-install.log; exit 1; fi
           python -m pytest tests/flint_compat -v -rs \
             --container-dir containers \
@@ -241,24 +248,22 @@ jobs:
 
       # Portable builds are pushed by digest and joined into one multi-arch
       # tag by the publish job; CPU-specific builds are amd64-only and tagged here.
+      # The metadata goes to a file: it is too big for an environment variable
+      # (several hundred KB), and also holds entries that are not targets, such
+      # as the list of build warnings.
       - name: Push portable images by digest
         if: env.PUBLISH == 'true' && matrix.suffix == ''
-        id: push-digest
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          targets: ${{ matrix.group }}
-          set: "*.output=type=image,push-by-digest=true,name-canonical=true,push=true"
-        env:
-          CACHE_REF: ${{ env.CACHE_REF }}
-
-      - name: Save digests
-        if: env.PUBLISH == 'true' && matrix.suffix == ''
         run: |
+          docker buildx bake ${{ matrix.group }} \
+            --set "*.output=type=image,push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file metadata.json
           mkdir -p digests
-          jq -r 'to_entries[] | select(.value["containerimage.digest"]) | "\(.key) \(.value["containerimage.digest"])"' \
-            <<<'${{ steps.push-digest.outputs.metadata }}' > "digests/${{ matrix.name }}.txt"
+          jq -r 'to_entries[] | select(.value | type == "object") | select(.value["containerimage.digest"])
+                 | "\(.key) \(.value["containerimage.digest"])"' \
+            metadata.json > "digests/${{ matrix.name }}.txt"
           cat "digests/${{ matrix.name }}.txt"
+          # An empty file would give the publish job nothing to tag
+          test -s "digests/${{ matrix.name }}.txt"
 
       - uses: actions/upload-artifact@v7
         if: env.PUBLISH == 'true' && matrix.suffix == ''
