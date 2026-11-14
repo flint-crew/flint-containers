@@ -47,8 +47,12 @@ RUN version="${PYTHON_CASACORE#v}" \
 # The measures data changes whenever it is downloaded again. Copied after the
 # python-casacore build so that only the tests run again, not the build.
 COPY --from=casacore /opt/measures /opt/measures
-# One worker per CPU: each test works in its own directory.
-RUN CALIBRATE_BIN_DIR=/opt/calibrate/bin /tmp/venv/bin/python -m pytest -q -n auto /src/calibrate/tests
+# One worker per CPU: each test works in its own directory. The measurement
+# sets the tests write are removed, or they would be compressed and uploaded
+# with the build cache, which took longer than the tests.
+RUN CALIBRATE_BIN_DIR=/opt/calibrate/bin /tmp/venv/bin/python -m pytest -q -n auto \
+        --basetemp=/tmp/pytest /src/calibrate/tests \
+ && rm -rf /tmp/pytest
 
 FROM casacore AS calibrate
 COPY --from=build /opt/calibrate /opt/calibrate

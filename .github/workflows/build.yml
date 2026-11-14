@@ -75,8 +75,7 @@ jobs:
           echo "Tag: ${tag}"
 
   build:
-    # Not lint: the builds start at once and lint runs beside them
-    needs: tag
+    # No "needs": the builds start at once, beside lint and tag
     strategy:
       fail-fast: false
       matrix:
@@ -199,43 +198,70 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # One bake builds the images and runs calibrate's own test suite, side by
-      # side. The images stay in the builder: an image that comes whole from
-      # the build cache is not even downloaded. The key names what was built,
-      # from the image configurations, which record every layer and setting.
-      - name: Build, and run calibrate's test suite
+      # calibrate's own test suite takes a minute or two when its inputs
+      # change, so it runs behind the steps that follow, which wait for it at
+      # the end. The builder shares the stages it has in common with the build.
+      - name: Start calibrate's test suite
+        if: matrix.calibrate_test && steps.cpu.outputs.run == 'true'
+        env:
+          CACHE_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          nohup sh -c 'docker buildx bake test > calibrate-test.log 2>&1; echo $? > calibrate-test.status' \
+            > /dev/null 2>&1 &
+
+      # The images stay in the builder: an image that comes whole from the
+      # build cache is not even downloaded. The key names what was built, from
+      # the image configurations, which record every layer and setting.
+      - name: Build
         id: build
         env:
           CACHE_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-          TEST: ${{ matrix.calibrate_test && steps.cpu.outputs.run == 'true' && 'test' || '' }}
+          FLINT_TESTS: ${{ steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64' }}
         run: |
           outputs=()
           for image in ${{ matrix.images }}; do
             outputs+=(--set "${image}.output=type=image")
           done
-          # shellcheck disable=SC2086 # TEST is empty or one word
-          docker buildx bake ${{ matrix.targets }} ${TEST} "${outputs[@]}" \
+          docker buildx bake ${{ matrix.targets }} "${outputs[@]}" \
             --provenance=false --metadata-file build.json
           # A missing digest must stop the run: it would make every key alike
           built=$(jq -er '[$ARGS.positional[] as $image | .[$image]["containerimage.config.digest"] // error("no digest for \($image)")] | join(" ")' \
             build.json --args ${{ matrix.images }})
           echo "${built}"
-          echo "key=tested-${{ matrix.name }}-${{ steps.cpu.outputs.run }}-$(sha256sum <<<"${built}" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          echo "key=${{ matrix.name }}-${{ steps.cpu.outputs.run }}-$(sha256sum <<<"${built}" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          # The flint commit the tests run against, where they run
+          flint=none
+          if [[ "${FLINT_TESTS}" == "true" ]]; then
+            flint=$(git ls-remote https://github.com/flint-crew/flint refs/heads/main | cut -f1)
+            test -n "${flint}"
+          fi
+          echo "flint=${flint}" >> "$GITHUB_OUTPUT"
+
+      # Saved only when the whole job passes, so finding it means that these
+      # images already passed every test here, with this flint and these
+      # tests. Nothing is left to do but wait for calibrate's test suite.
+      - name: Look for a run that passed with these images
+        id: passed
+        uses: actions/cache@v6
+        with:
+          path: containers/sizes.md
+          key: passed-${{ steps.build.outputs.key }}-${{ steps.build.outputs.flint }}-${{ hashFiles('tests/**') }}
 
       # What the steps below make from the images: their sizes and, on amd64,
       # their Apptainer files (15 seconds to several minutes each to convert).
-      # It is saved only when the whole job passes, so finding it means these
-      # same images already passed the smoke tests, which are then skipped.
-      - name: Look for the results of testing these images before
+      # Also saved only when the job passes, so finding it means these images
+      # already passed the smoke tests, which are then skipped.
+      - name: Look for the Apptainer files of these images
         id: tested
+        if: steps.passed.outputs.cache-hit != 'true'
         uses: actions/cache@v6
         with:
           path: containers
-          key: ${{ steps.build.outputs.key }}-${{ hashFiles('tests/smoke.sh') }}
+          key: tested-${{ steps.build.outputs.key }}-${{ hashFiles('tests/smoke.sh') }}
 
       # Everything is in the build cache by now, so this only exports.
       - name: Load the images into Docker
-        if: steps.tested.outputs.cache-hit != 'true'
+        if: steps.passed.outputs.cache-hit != 'true' && steps.tested.outputs.cache-hit != 'true'
         run: |
           outputs=()
           for image in ${{ matrix.images }}; do
@@ -244,7 +270,7 @@ jobs:
           docker buildx bake ${{ matrix.targets }} "${outputs[@]}"
 
       - name: Smoke tests
-        if: steps.tested.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true'
+        if: steps.passed.outputs.cache-hit != 'true' && steps.tested.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true'
         run: |
           for image in ${{ matrix.images }}; do
             echo "::group::${image}"
@@ -270,7 +296,7 @@ jobs:
 
       # uv and a Python environment that the later steps use as "python"
       - name: Set up uv for the flint tests
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
+        if: steps.passed.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
@@ -278,15 +304,15 @@ jobs:
           enable-cache: true
 
       - name: Set up Apptainer
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
+        if: steps.passed.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         uses: eWaterCycle/setup-apptainer@v3
 
       - name: Run flint's container call sites
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
+        if: steps.passed.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           # Install flint while the images are converted
-          uv pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest \
+          uv pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@${{ steps.build.outputs.flint }}" pytest \
             > pip-install.log 2>&1 &
           pip_pid=$!
           # One at a time: conversions that run together corrupt Apptainer's
@@ -305,13 +331,19 @@ jobs:
             --container-dir containers \
             --expect "$(tr ' ' ',' <<<"${{ matrix.images }}")"
 
-      # Portable builds are pushed by digest and joined into one multi-arch
-      # tag by the publish job; CPU-specific builds are amd64-only and tagged here.
-      # The metadata goes to a file: it is too big for an environment variable
-      # (several hundred KB), and also holds entries that are not targets, such
-      # as the list of build warnings.
-      - name: Push portable images by digest
-        if: env.PUBLISH == 'true' && matrix.suffix == ''
+      - name: Wait for calibrate's test suite
+        if: matrix.calibrate_test && steps.cpu.outputs.run == 'true'
+        run: |
+          while [[ ! -f calibrate-test.status ]]; do sleep 1; done
+          cat calibrate-test.log
+          exit "$(cat calibrate-test.status)"
+
+      # Every build is pushed by digest and tagged by the publish job, so this
+      # job needs no tag. The metadata goes to a file: it is too big for an
+      # environment variable (several hundred KB), and also holds entries that
+      # are not targets, such as the list of build warnings.
+      - name: Push images by digest
+        if: env.PUBLISH == 'true'
         run: |
           # The name has no tag: a tagged name can't be pushed by digest
           outputs=()
@@ -320,31 +352,21 @@ jobs:
                       --set "${image}.output=type=image,push-by-digest=true,name-canonical=true,push=true")
           done
           docker buildx bake ${{ matrix.targets }} "${outputs[@]}" --metadata-file metadata.json
+          # One line per image: its name, digest and CPU-specific suffix, if any
           mkdir -p digests
-          jq -r 'to_entries[] | select(.value | type == "object") | select(.value["containerimage.digest"])
-                 | "\(.key) \(.value["containerimage.digest"])"' \
+          jq -r --arg suffix "${{ matrix.suffix }}" \
+            'to_entries[] | select(.value | type == "object") | select(.value["containerimage.digest"])
+             | "\(.key) \(.value["containerimage.digest"]) \($suffix)"' \
             metadata.json > "digests/${{ matrix.name }}.txt"
           cat "digests/${{ matrix.name }}.txt"
           # An empty file would give the publish job nothing to tag
           test -s "digests/${{ matrix.name }}.txt"
 
       - uses: actions/upload-artifact@v7
-        if: env.PUBLISH == 'true' && matrix.suffix == ''
+        if: env.PUBLISH == 'true'
         with:
           name: digests-${{ matrix.name }}
           path: digests/
-
-      - name: Push CPU-specific images
-        if: env.PUBLISH == 'true' && matrix.suffix != ''
-        uses: docker/bake-action@v7
-        with:
-          source: .
-          targets: ${{ matrix.targets }}
-          push: true
-        env:
-          CACHE_REF: ${{ env.CACHE_REF }}
-          TAGS: ${{ github.event_name == 'release' && format('{0},latest', needs.tag.outputs.tag) || needs.tag.outputs.tag }}
-          TAG_SUFFIX: ${{ matrix.suffix }}
 
   publish:
     needs: [lint, tag, build]
@@ -368,17 +390,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create multi-arch tags
+      # The portable tag joins the amd64 and arm64 builds; a CPU-specific tag
+      # has the one amd64 build.
+      - name: Create tags
         env:
           TAG: ${{ needs.tag.outputs.tag }}
           LATEST: ${{ github.event_name == 'release' }}
         run: |
-          for image in calibrate wsclean aoflagger potato aegean casa askapsoft rclone; do
-            sources=$(awk -v img="${image}" '$1 == img {print ENVIRON["REGISTRY"] "/" img "@" $2}' digests/*.txt)
-            tags=(-t "${REGISTRY}/${image}:${TAG}")
-            if [[ "${LATEST}" == "true" ]]; then tags+=(-t "${REGISTRY}/${image}:latest"); fi
+          tag_image() {
+            local image=$1 suffix=$2 sources
+            sources=$(awk -v img="${image}" -v suffix="${suffix}" \
+              '$1 == img && $3 == suffix {print ENVIRON["REGISTRY"] "/" img "@" $2}' digests/*.txt)
+            test -n "${sources}"
+            tags=(-t "${REGISTRY}/${image}:${TAG}${suffix}")
+            if [[ "${LATEST}" == "true" ]]; then tags+=(-t "${REGISTRY}/${image}:latest${suffix}"); fi
             # shellcheck disable=SC2086
             docker buildx imagetools create "${tags[@]}" ${sources}
+          }
+          for image in calibrate wsclean aoflagger potato aegean casa askapsoft rclone; do
+            tag_image "${image}" ""
+          done
+          for image in calibrate wsclean aoflagger potato; do
+            tag_image "${image}" -x86-64-v3
+            tag_image "${image}" -x86-64-v4
           done
 
       - name: Copy portable images to the CPU-specific tags
