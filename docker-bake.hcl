@@ -104,7 +104,9 @@ variable "CACHE_PUSH" { default = false }
 # read before main's, so a branch never overwrites main's cache.
 variable "CACHE_SCOPE" { default = "" }
 
-variable "GITHUB_SHA" { default = "" }
+# Commit recorded in the images. CI sets it only for the images it publishes,
+# so that other builds of the same sources give identical images.
+variable "REVISION" { default = "" }
 
 # --- Helpers --------------------------------------------------------------------
 
@@ -165,7 +167,7 @@ target "_common" {
   }
   labels = {
     "org.opencontainers.image.source"   = "https://github.com/flint-crew/flint-containers"
-    "org.opencontainers.image.revision" = GITHUB_SHA
+    "org.opencontainers.image.revision" = REVISION
     "io.github.flint-crew.ubuntu"       = UBUNTU_IMAGE
   }
 }

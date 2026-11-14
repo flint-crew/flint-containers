@@ -154,7 +154,7 @@ jobs:
       MARCH: ${{ matrix.march }}
       PLATFORMS: ${{ matrix.platform }}
       TAGS: ci
-      GITHUB_SHA: ${{ github.sha }}
+      REVISION: ${{ (github.event_name == 'release' || github.event_name == 'workflow_dispatch') && github.sha || '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -200,21 +200,50 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # One bake builds the images and runs calibrate's own test suite, side by
-      # side. Only the images are loaded into Docker: the tests leave nothing.
+      # side. The images stay in the builder: an image that comes whole from
+      # the build cache is not even downloaded. The key names what was built,
+      # from the image configurations, which record every layer and setting.
       - name: Build, and run calibrate's test suite
+        id: build
         env:
           CACHE_PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           TEST: ${{ matrix.calibrate_test && steps.cpu.outputs.run == 'true' && 'test' || '' }}
         run: |
           outputs=()
           for image in ${{ matrix.images }}; do
-            outputs+=(--set "${image}.output=type=docker")
+            outputs+=(--set "${image}.output=type=image")
           done
           # shellcheck disable=SC2086 # TEST is empty or one word
-          docker buildx bake ${{ matrix.targets }} ${TEST} "${outputs[@]}"
+          docker buildx bake ${{ matrix.targets }} ${TEST} "${outputs[@]}" \
+            --provenance=false --metadata-file build.json
+          built=$(for image in ${{ matrix.images }}; do
+            jq -er --arg image "${image}" '.[$image]["containerimage.config.digest"]' build.json
+          done | sha256sum | cut -c1-16)
+          echo "key=tested-${{ matrix.name }}-${{ steps.cpu.outputs.run }}-${built}" >> "$GITHUB_OUTPUT"
+
+      # What the steps below make from the images: their sizes and, on amd64,
+      # their Apptainer files (15 seconds to several minutes each to convert).
+      # It is saved only when the whole job passes, so finding it means these
+      # same images already passed the smoke tests, which are then skipped.
+      - name: Look for the results of testing these images before
+        id: tested
+        uses: actions/cache@v6
+        with:
+          path: containers
+          key: ${{ steps.build.outputs.key }}-${{ hashFiles('tests/smoke.sh') }}
+
+      # Everything is in the build cache by now, so this only exports.
+      - name: Load the images into Docker
+        if: steps.tested.outputs.cache-hit != 'true'
+        run: |
+          outputs=()
+          for image in ${{ matrix.images }}; do
+            outputs+=(--set "${image}.output=type=docker")
+          done
+          docker buildx bake ${{ matrix.targets }} "${outputs[@]}"
 
       - name: Smoke tests
-        if: steps.cpu.outputs.run == 'true'
+        if: steps.tested.outputs.cache-hit != 'true' && steps.cpu.outputs.run == 'true'
         run: |
           for image in ${{ matrix.images }}; do
             echo "::group::${image}"
@@ -224,15 +253,19 @@ jobs:
 
       - name: Image sizes
         run: |
-          {
-            echo "### ${{ matrix.name }} (${{ matrix.march }})"
-            echo "| Image | Size (uncompressed) |"
-            echo "|---|---|"
-            for image in ${{ matrix.images }}; do
-              size=$(docker image inspect --format '{{.Size}}' "${REGISTRY}/${image}:ci")
-              echo "| ${image} | $(numfmt --to=iec "${size}") |"
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p containers
+          if [[ ! -f containers/sizes.md ]]; then
+            {
+              echo "### ${{ matrix.name }} (${{ matrix.march }})"
+              echo "| Image | Size (uncompressed) |"
+              echo "|---|---|"
+              for image in ${{ matrix.images }}; do
+                size=$(docker image inspect --format '{{.Size}}' "${REGISTRY}/${image}:ci")
+                echo "| ${image} | $(numfmt --to=iec "${size}") |"
+              done
+            } > containers/sizes.md
+          fi
+          cat containers/sizes.md >> "$GITHUB_STEP_SUMMARY"
 
       # uv and a Python environment that the later steps use as "python"
       - name: Set up uv for the flint tests
@@ -247,26 +280,6 @@ jobs:
         if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         uses: eWaterCycle/setup-apptainer@v3
 
-      # Converting an image to an Apptainer file takes from 15 seconds to
-      # several minutes (askapsoft). Keep the files, keyed on what is in the
-      # images: their layers and settings, but not their labels, which change
-      # with every commit.
-      - name: Cache key for the Apptainer files
-        id: sif
-        if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
-        run: |
-          contents=$(for image in ${{ matrix.images }}; do
-            docker image inspect "${REGISTRY}/${image}:ci" \
-              --format '{{json .RootFS.Layers}} {{json .Config.Env}} {{json .Config.Entrypoint}} {{json .Config.Cmd}} {{json .Config.WorkingDir}} {{json .Config.User}}'
-          done | sha256sum | cut -c1-16)
-          echo "key=sif-${{ matrix.name }}-${contents}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v6
-        if: steps.sif.outputs.key
-        with:
-          path: containers
-          key: ${{ steps.sif.outputs.key }}
-
       - name: Run flint's container call sites
         if: steps.cpu.outputs.run == 'true' && matrix.platform == 'linux/amd64'
         run: |
@@ -275,17 +288,16 @@ jobs:
           uv pip install "askap-flint[casa] @ git+https://github.com/flint-crew/flint@main" pytest \
             > pip-install.log 2>&1 &
           pip_pid=$!
-          mkdir -p containers
           # One at a time: conversions that run together corrupt Apptainer's
           # shared cache, and are no faster.
           for image in ${{ matrix.images }}; do
             sif="containers/flint-containers_${image}.sif"
             if [[ -f "${sif}" ]]; then
-              echo "Using cached ${sif}"
+              echo "Using ${sif} from the earlier run"
             else
               apptainer build "${sif}" "docker-daemon://${REGISTRY}/${image}:ci"
+              docker image rm "${REGISTRY}/${image}:ci"
             fi
-            docker image rm "${REGISTRY}/${image}:ci"
           done
           if ! wait "${pip_pid}"; then cat pip-install.log; exit 1; fi
           python -m pytest tests/flint_compat -v -rs \

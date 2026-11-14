@@ -38,7 +38,7 @@ COPY --from=python-casacore-src / /src/python-casacore
 RUN version="${PYTHON_CASACORE#v}" \
  && case "${version}" in ""|*[!0-9.]*) version="0+g${PYTHON_CASACORE}" ;; esac \
  && uv venv --python /usr/bin/python3 /tmp/venv \
- && uv pip install --python /tmp/venv/bin/python "numpy==${BUILD_NUMPY}" pytest \
+ && uv pip install --python /tmp/venv/bin/python "numpy==${BUILD_NUMPY}" pytest pytest-xdist \
  && SETUPTOOLS_SCM_PRETEND_VERSION="${version}" \
     uv pip install --python /tmp/venv/bin/python \
         --config-settings=cmake.define.CASACORE_ROOT_DIR=/opt/casacore \
@@ -47,7 +47,8 @@ RUN version="${PYTHON_CASACORE#v}" \
 # The measures data changes whenever it is downloaded again. Copied after the
 # python-casacore build so that only the tests run again, not the build.
 COPY --from=casacore /opt/measures /opt/measures
-RUN CALIBRATE_BIN_DIR=/opt/calibrate/bin /tmp/venv/bin/python -m pytest -q /src/calibrate/tests
+# One worker per CPU: each test works in its own directory.
+RUN CALIBRATE_BIN_DIR=/opt/calibrate/bin /tmp/venv/bin/python -m pytest -q -n auto /src/calibrate/tests
 
 FROM casacore AS calibrate
 COPY --from=build /opt/calibrate /opt/calibrate

@@ -162,7 +162,7 @@ jobs:
       IMAGES: ${{ needs.check.outputs.images }}
       TAG: try-${{ inputs.label || github.run_number }}
       CACHE_PUSH: "true"
-      GITHUB_SHA: ${{ github.sha }}
+      REVISION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
 
