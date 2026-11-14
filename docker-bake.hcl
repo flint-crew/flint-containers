@@ -186,9 +186,13 @@ target "_casacore" {
   }
 }
 
+# Its own cache: the images that start from it are built after it, so their
+# caches are read too late to supply it.
 target "build-base" {
-  inherits = ["_base"]
-  target   = "build-base"
+  inherits   = ["_base"]
+  target     = "build-base"
+  cache-from = cache_from("build-base")
+  cache-to   = cache_to("build-base")
 }
 
 target "runtime-base" {
