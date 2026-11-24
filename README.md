@@ -62,14 +62,14 @@ To see the versions inside an image, run `docker inspect --format '{{json .Confi
 
 ### Moving to casacore 3.8
 
-Two upstream releases are needed first. casacore 3.8 no longer makes `string` available without `std::`, and casacore after 3.8.1 needs C++20.
+One upstream release is needed first. casacore 3.8 no longer makes `string` available without `std::`, and casacore after 3.8.1 needs C++20.
 
 | Tool | Now | Needed for casacore 3.8 |
 |---|---|---|
-| wsclean | v3.7 | A release containing commit [`5a4dcde`](https://gitlab.com/aroffringa/wsclean/-/commit/5a4dcde) |
+| wsclean | v3.8 | No change: v3.8 contains commit [`5a4dcde`](https://gitlab.com/aroffringa/wsclean/-/commit/5a4dcde) |
 | aoflagger | v3.5.0 | A release containing commit [`2c22cfe`](https://gitlab.com/aroffringa/aoflagger/-/commit/2c22cfe) |
 | python-casacore | v3.7.1 | v3.8.1 |
-| calibrate, IDG, EveryBeam | `3e5e84a`, 1.2.0, v0.8.5 | No change |
+| calibrate, IDG, EveryBeam | `3e5e84a`, 1.2.0, v0.9.1 | No change |
 
 `tools/try_build.py check` knows these requirements and reports when a combination will work.
 
