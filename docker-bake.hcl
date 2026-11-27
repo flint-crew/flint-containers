@@ -25,13 +25,13 @@ variable "CASACORE" { default = "v3.7.1" }
 variable "CALIBRATE" { default = "3e5e84a8606b44165e9db382611c6c7fbf397c9b" }
 
 # https://gitlab.com/aroffringa/wsclean
-variable "WSCLEAN" { default = "v3.7" }
+variable "WSCLEAN" { default = "v3.8" }
 
-# https://git.astron.nl/RD/idg (wsclean 3.7 needs >= 0.8.1)
+# https://git.astron.nl/RD/idg (wsclean 3.8 needs >= 0.8.1)
 variable "IDG" { default = "1.2.0" }
 
-# https://git.astron.nl/RD/EveryBeam (wsclean 3.7 needs 0.7.4 to 0.8.x)
-variable "EVERYBEAM" { default = "v0.8.5" }
+# https://git.astron.nl/RD/EveryBeam (wsclean 3.8 needs 0.9.x)
+variable "EVERYBEAM" { default = "v0.9.1" }
 
 # https://gitlab.com/aroffringa/aoflagger
 variable "AOFLAGGER" { default = "v3.5.0" }
